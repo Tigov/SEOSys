@@ -1,0 +1,5 @@
+frontend/node_modules/**
+backend/seo_platform/static/**
+backend/data/**
+**/.venv/**
+**/__pycache__/**

@@ -1,0 +1,101 @@
+{
+  "business": {
+    "name": "Lone Star Comfort HVAC",
+    "city": "Austin",
+    "region": "TX",
+    "phone": "(512) 555-0142",
+    "street": "4100 Burnet Rd",
+    "postal_code": "78756"
+  },
+  "robots_txt": "User-agent: GPTBot\nDisallow: /\n\nUser-agent: *\nDisallow:\n",
+  "redirects": {
+    "/old-services": "/services",
+    "/services": "/services/ac-repair"
+  },
+  "pages": [
+    {
+      "path": "/",
+      "title": "Lone Star Comfort HVAC | Austin AC & Heating Repair",
+      "meta_description": "",
+      "h1": "Austin's Trusted Heating & Cooling Experts",
+      "canonical": "/",
+      "noindex": false,
+      "in_sitemap": true,
+      "schema_jsonld": "",
+      "images": [{"src": "/img/hero.svg", "alt": "Technician servicing an outdoor AC unit"}],
+      "body_html": "<p>For over fifteen years Lone Star Comfort HVAC has kept Austin homes cool through brutal Texas summers and warm on the rare winter nights when the temperature drops below freezing. Our licensed technicians repair, maintain and install air conditioners, heat pumps and furnaces from every major manufacturer, and we stand behind every job with a written workmanship warranty.</p><p>We serve Central Austin, Hyde Park, Allandale, Crestview, North Loop and the surrounding neighborhoods. Most repair calls are answered the same day, and our trucks carry the common parts needed to finish the job in a single visit. When a system is beyond repair we explain the options in plain language, with upfront pricing and no pressure.</p><p>Homeowners choose us because we show up on time, protect their floors, and leave the work area clean. Our maintenance plan includes two tune-ups a year, priority scheduling and a discount on repairs, which helps systems last longer and run more efficiently. We also help customers understand rebates from Austin Energy for high-efficiency equipment.</p><p>Explore our <a href=\"/services/ac-repair\">AC repair</a> and <a href=\"/services/furnace-repair\">furnace repair</a> services, read <a href=\"/blog/summer-ac-tips\">our summer AC tips</a>, learn <a href=\"/about\">about our team</a>, or <a href=\"/contact\">book a visit</a>. Need help right now? See our <a href=\"/emergency-hvac\">emergency HVAC service</a>.</p>"
+    },
+    {
+      "path": "/services/ac-repair",
+      "title": "HVAC Services | Lone Star Comfort",
+      "meta_description": "Fast, honest AC repair in Austin, TX. Same-day service, upfront pricing and licensed technicians for every major brand.",
+      "h1": "AC Repair in Austin",
+      "canonical": "/services/ac-repair",
+      "noindex": false,
+      "in_sitemap": true,
+      "schema_jsonld": "",
+      "images": [{"src": "/img/ac-unit.svg", "alt": "Condenser unit being repaired"}],
+      "body_html": "<p>When your air conditioner stops cooling in the middle of an Austin summer, every hour matters. Our technicians diagnose the problem quickly, explain what failed and why, and give you a fixed price before any work begins. We repair central air systems, heat pumps and ductless mini-splits from Carrier, Trane, Lennox, Goodman, Rheem and other major brands.</p><p>Common repairs include failed capacitors and contactors, refrigerant leaks, frozen evaporator coils, clogged condensate drains, worn blower motors and faulty thermostats. Our trucks are stocked with the parts we use most, so most repairs are finished during the first visit. Every repair includes a full system check so small problems do not become expensive breakdowns.</p><p>We serve homeowners across Central and North Austin with same-day appointments for most calls placed before noon. If a repair no longer makes financial sense, we will tell you honestly and walk you through replacement options and available rebates, including Austin Energy incentives for efficient equipment. Call us or <a href=\"/contact\">book online</a> to schedule a visit.</p>"
+    },
+    {
+      "path": "/services/furnace-repair",
+      "title": "HVAC Services | Lone Star Comfort",
+      "meta_description": "Furnace and heat pump repair in Austin. Safe, reliable heating service from licensed technicians, with upfront pricing.",
+      "h1": "Furnace Repair in Austin",
+      "canonical": "",
+      "noindex": false,
+      "in_sitemap": true,
+      "schema_jsonld": "",
+      "images": [{"src": "/img/furnace.svg", "alt": "Gas furnace with the access panel removed"}],
+      "body_html": "<p>Austin winters are short, but when a cold front arrives a working furnace or heat pump is essential. Our technicians repair gas furnaces, electric furnaces and heat pumps, and we check every system for carbon monoxide safety before we leave. We explain the problem, show you the failed part, and give a firm price before starting the repair.</p><p>Typical heating repairs include faulty igniters and flame sensors, failed inducer motors, tripped limit switches, dirty burners and heat pump defrost problems. We carry common parts on every truck and finish most repairs in one visit. A pre-season heating tune-up is included in our maintenance plan, which helps prevent breakdowns on the coldest nights of the year.</p><p>We serve Central Austin, Hyde Park, Allandale, Crestview and nearby neighborhoods. Whether your system is blowing cold air, cycling on and off, or making unusual noises, we can help. <a href=\"/contact\">Contact us</a> to schedule heating service with a licensed technician.</p>"
+    },
+    {
+      "path": "/about",
+      "title": "About Us | Lone Star Comfort HVAC",
+      "meta_description": "Meet the licensed, family-owned team behind Lone Star Comfort HVAC, serving Austin homeowners since 2010.",
+      "h1": "",
+      "canonical": "",
+      "noindex": false,
+      "in_sitemap": true,
+      "schema_jsonld": "",
+      "images": [{"src": "/img/team.svg", "alt": ""}],
+      "body_html": "<p>Lone Star Comfort HVAC is a family-owned company founded in 2010 by two technicians who wanted to run the kind of service business they would hire themselves. Today our team of twelve includes licensed technicians, installers and office staff who live in the neighborhoods we serve.</p><p>Every technician holds a Texas ACR license and completes manufacturer training each year. We perform background checks, carry full liability insurance, and stand behind our work with a written warranty. Our office team answers the phone in person during business hours, and we send a text when your technician is on the way.</p><p>We believe in honest recommendations. If a fifty-dollar part will fix your system, we will not try to sell you a new one. That approach has earned us loyal customers across Austin, and most of our new business comes from neighbors referring neighbors. Learn more about our <a href=\"/services/ac-repair\">services</a> or <a href=\"/contact\">get in touch</a>.</p>"
+    },
+    {
+      "path": "/contact",
+      "title": "Contact Lone Star Comfort HVAC | Book Service",
+      "meta_description": "Book AC or heating service in Austin. Call (512) 555-0142 or request an appointment online.",
+      "h1": "Contact Us",
+      "canonical": "/contact",
+      "noindex": true,
+      "in_sitemap": true,
+      "schema_jsonld": "",
+      "images": [],
+      "body_html": "<p>Call us at (512) 555-0142, Monday to Saturday from 7 am to 7 pm, or send a request and we will call you back within one business hour. Our office is at 4100 Burnet Rd, Austin, TX 78756. We serve Central Austin, Hyde Park, Allandale, Crestview, North Loop and nearby neighborhoods.</p><p>For no-cooling or no-heat emergencies outside business hours, see our <a href=\"/emergency-hvac\">emergency HVAC service</a>. When you call, have your system's brand and approximate age handy if you can, along with a short description of what it is doing. That helps our technicians bring the right parts on the first visit.</p>"
+    },
+    {
+      "path": "/emergency-hvac",
+      "title": "24/7 Emergency HVAC Repair Service in Austin Texas - Fast Same-Day Response For Every Home",
+      "meta_description": "Emergency AC and heating repair in Austin, available evenings and weekends.",
+      "h1": "Emergency HVAC Repair",
+      "canonical": "/emergency-hvac",
+      "noindex": false,
+      "in_sitemap": false,
+      "schema_jsonld": "",
+      "images": [],
+      "body_html": "<p>AC or heat out after hours? We offer emergency service in Austin on evenings and weekends. Call (512) 555-0142 and a technician will call you back.</p>"
+    },
+    {
+      "path": "/blog/summer-ac-tips",
+      "title": "7 Summer AC Tips for Austin Homeowners | Lone Star Comfort",
+      "meta_description": "Simple ways to keep your AC running efficiently through an Austin summer and avoid costly breakdowns.",
+      "h1": "7 Summer AC Tips for Austin Homeowners",
+      "canonical": "/blog/summer-ac-tips",
+      "noindex": false,
+      "in_sitemap": true,
+      "schema_jsonld": "",
+      "images": [{"src": "/img/thermostat.svg", "alt": ""}],
+      "body_html": "<p>Austin summers put enormous strain on air conditioners. These seven habits help your system run efficiently and reduce the chance of a breakdown during a heat wave.</p><p>First, change your air filter every one to three months. A clogged filter restricts airflow, makes the system work harder and can freeze the evaporator coil. Second, keep at least two feet of clearance around the outdoor unit and rinse dirt off the coil fins with a garden hose in spring.</p><p>Third, raise the thermostat a few degrees when you are away; a smart thermostat makes this automatic. Fourth, close blinds on west-facing windows in the afternoon. Fifth, make sure the condensate drain line is clear, since a clog can shut the system down or cause water damage.</p><p>Sixth, listen for new noises such as buzzing, grinding or clicking, which often signal a failing part. Seventh, schedule a professional tune-up before the hottest months. Check our <a href=\"/specials\">current maintenance specials</a> or browse our <a href=\"/old-services\">services</a> to learn more.</p>"
+    }
+  ]
+}
