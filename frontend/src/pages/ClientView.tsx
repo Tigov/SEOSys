@@ -4,6 +4,7 @@ import { plural } from "../labels";
 import { Activity } from "./Activity";
 import { Changes } from "./Changes";
 import { Findings } from "./Findings";
+import { Google } from "./Google";
 import { Overview } from "./Overview";
 import { Visibility } from "./Visibility";
 
@@ -12,6 +13,7 @@ const TABS = [
   { id: "findings", label: "Findings" },
   { id: "changes", label: "Changes" },
   { id: "visibility", label: "AI visibility" },
+  { id: "google", label: "Google data" },
   { id: "activity", label: "Activity" },
 ];
 
@@ -91,6 +93,7 @@ export function ClientView({ clientId, tab, roleKey }: { clientId: number; tab: 
         {tab === "findings" && <Findings clientId={clientId} refresh={reload} />}
         {tab === "changes" && <Changes clientId={clientId} siteUrl={s.site.base_url} refresh={reload} />}
         {tab === "visibility" && <Visibility clientId={clientId} clientName={s.client.name} refresh={reload} />}
+        {tab === "google" && <Google clientId={clientId} siteUrl={s.site.base_url} />}
         {tab === "activity" && <Activity clientId={clientId} />}
       </div>
     </div>

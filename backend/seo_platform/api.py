@@ -14,12 +14,13 @@ from typing import Any, AsyncIterator, Literal
 import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, HttpUrl
 
 from . import changes as change_svc
 from . import services, visibility
+from .adapters import google
 from .adapters.llm import get_writer
 from .adapters.site_wp import AdapterError, WordPressAdapter
 from .config import settings
@@ -78,6 +79,16 @@ class FaultIn(BaseModel):
     on: bool
 
 
+class GoogleSelectIn(BaseModel):
+    gsc_site: str | None = None
+    ga4_property: str | None = None
+
+
+class PageSpeedIn(BaseModel):
+    url: HttpUrl | None = None
+    strategy: Literal["mobile", "desktop"] = "mobile"
+
+
 def seed_demo(db: Database) -> None:
     if db.list_clients():
         return
@@ -121,6 +132,10 @@ def create_app(db: Database | None = None) -> FastAPI:
     @app.exception_handler(BlockedHostError)
     async def blocked(_: Request, exc: BlockedHostError) -> JSONResponse:
         return JSONResponse({"detail": str(exc)}, status_code=400)
+
+    @app.exception_handler(google.GoogleError)
+    async def google_error(_: Request, exc: google.GoogleError) -> JSONResponse:
+        return JSONResponse({"detail": str(exc)}, status_code=exc.status)
 
     # ---------- dependencies ----------
 
@@ -294,6 +309,46 @@ def create_app(db: Database | None = None) -> FastAPI:
         prompts = {p["id"]: p["text"] for p in repo.list("prompts")}
         rows = repo.list("ai_observations", "run_no = ?", (last[0]["run_no"],))
         return [{**r, "prompt": prompts.get(r["prompt_id"], "")} for r in rows]
+
+    # ---------- Google: connection (OAuth), Search Console, GA4, PageSpeed ----------
+    @app.get("/api/clients/{client_id}/connections/google")
+    def google_status(client_id: int, c: Caller = Depends(caller)) -> dict[str, Any]:
+        return google.status(repo_for(client_id))
+
+    @app.post("/api/clients/{client_id}/connections/google/start")
+    def google_start(client_id: int, c: Caller = Depends(caller)) -> dict[str, str]:
+        return {"auth_url": google.start_connect(database, client_id, c.actor)}
+
+    @app.get("/api/oauth/google/callback")
+    async def google_callback(state: str = "", code: str | None = None, error: str | None = None) -> RedirectResponse:
+        # Google redirects the browser here, so there are no role headers; the one-time state identifies the request.
+        client_id, outcome = await google.finish_connect(database, state, code, error)
+        return RedirectResponse(f"/?google={outcome}#/clients/{client_id}/google", status_code=303)
+
+    @app.get("/api/clients/{client_id}/connections/google/properties")
+    async def google_properties(client_id: int, c: Caller = Depends(caller)) -> dict[str, Any]:
+        return await google.list_properties(repo_for(client_id))
+
+    @app.patch("/api/clients/{client_id}/connections/google")
+    async def google_select(client_id: int, body: GoogleSelectIn, c: Caller = Depends(caller)) -> dict[str, Any]:
+        return await google.select(repo_for(client_id), c.actor, body.gsc_site, body.ga4_property)
+
+    @app.delete("/api/clients/{client_id}/connections/google")
+    async def google_disconnect(client_id: int, c: Caller = Depends(caller)) -> dict[str, Any]:
+        return await google.disconnect(repo_for(client_id), c.actor)
+
+    @app.get("/api/clients/{client_id}/google/search-console")
+    async def google_search_console(client_id: int, days: int = 28, c: Caller = Depends(caller)) -> dict[str, Any]:
+        return await google.search_console_report(repo_for(client_id), max(1, min(days, 480)))
+
+    @app.get("/api/clients/{client_id}/google/analytics")
+    async def google_analytics(client_id: int, days: int = 28, c: Caller = Depends(caller)) -> dict[str, Any]:
+        return await google.analytics_report(repo_for(client_id), max(1, min(days, 480)))
+
+    @app.post("/api/clients/{client_id}/google/pagespeed")
+    async def google_pagespeed(client_id: int, body: PageSpeedIn, c: Caller = Depends(caller)) -> dict[str, Any]:
+        staff_only(c)
+        return await google.pagespeed(repo_for(client_id), str(body.url) if body.url else None, body.strategy)
 
     # ---------- reporting, log, export, ops ----------
     @app.get("/api/clients/{client_id}/report", response_class=HTMLResponse)

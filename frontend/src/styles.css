@@ -320,12 +320,49 @@ input:focus-visible, select:focus-visible { border-color: var(--ink); }
 .toast-ok { background: var(--ink); }
 .toast-error { background: var(--brick); }
 
+/* ---------- Google data ---------- */
+/* The access slip: what we can read, in plain words. The tag edge shows only while someone needs to act. */
+.access { display: flex; gap: 24px; justify-content: space-between; align-items: center; }
+.access-body { max-width: 72ch; }
+.access-body p { margin: 6px 0 0; }
+.access-needed { border-left: 6px solid var(--tag); }
+.access-terms { margin: 12px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 14px; color: var(--slate); }
+.access-terms li { padding-left: 22px; position: relative; }
+.access-terms li::before { content: ""; position: absolute; left: 2px; top: 0.45em; width: 10px; height: 6px;
+  border-left: 2px solid var(--green); border-bottom: 2px solid var(--green); transform: rotate(-45deg); }
+.access .btn { flex: none; }
+.panel .figures { margin-top: 4px; }
+.figures-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.panel h3 + .section-lede { margin-top: 2px; }
+.panel h3 + .table, .panel h3 + .muted, .panel h3 + .empty { margin-top: 10px; }
+.psi-form { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+.psi-url { flex: 1 1 320px; }
+.psi-form .seg { align-self: flex-end; margin-bottom: 4px; }
+.psi-result { display: grid; grid-template-columns: minmax(180px, 240px) minmax(0, 1fr); gap: 32px; margin-top: 24px;
+  padding-top: 20px; border-top: 1px solid var(--rule-soft); }
+.psi-score p { margin: 8px 0 0; font-size: 13px; overflow-wrap: anywhere; }
+.psi-score .psi-verdict { font-family: var(--head); font-size: 18px; font-weight: 600; color: var(--ink); margin-top: 10px; }
+.psi-detail { max-width: 760px; }
+.psi-headline { font-family: var(--head); font-size: 18px; line-height: 1.4; margin: 0 0 22px; max-width: 60ch; }
+.speed-list { list-style: none; margin: 10px 0 0; padding: 0; border-top: 1px solid var(--rule-soft); }
+.speed-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; column-gap: 16px; row-gap: 2px;
+  align-items: baseline; padding: 12px 0; border-bottom: 1px solid var(--rule-soft); }
+.speed-q { font-size: 15px; }
+.speed-a { font-family: var(--num); font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.speed-list .pill { justify-self: start; min-width: 92px; text-align: center; }
+.speed-good { grid-column: 1 / -1; font-size: 13px; color: var(--slate); }
+.psi-more { margin-top: 24px; }
+.psi-more summary { cursor: pointer; font-family: var(--head); font-weight: 600; font-size: 15px; }
+.psi-more summary:focus-visible { outline: 3px solid var(--tag); outline-offset: 2px; }
+.psi-more > p { margin: 8px 0 0; font-size: 14px; }
+
 /* ---------- responsive ---------- */
 @media (max-width: 1180px) {
   .overview { grid-template-columns: minmax(0, 1fr); }
   .figures { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .figure:nth-child(3) { border-left: 0; }
   .figure:nth-child(n + 3) { border-top: 1px solid var(--rule-soft); }
+  .psi-result { grid-template-columns: minmax(0, 1fr); gap: 20px; }
 }
 @media (max-width: 900px) {
   .shell { grid-template-columns: 1fr; }
@@ -335,7 +372,12 @@ input:focus-visible, select:focus-visible { border-color: var(--ink); }
   .rail-foot { margin-top: 0; flex-direction: row; flex-wrap: wrap; align-items: flex-end; }
   .main { padding: 24px 16px 48px; }
   .client-head { align-items: flex-start; }
-  .two-col, .diff, .serp-pair, .form-grid, .sections { grid-template-columns: 1fr; }
+  .two-col, .diff, .serp-pair, .form-grid, .sections, .psi-result, .figures-3 { grid-template-columns: 1fr; }
+  .figures-3 .figure + .figure { border-left: 0; border-top: 1px solid var(--rule-soft); }
+  .access { flex-direction: column; align-items: flex-start; }
+  .speed-list li { grid-template-columns: minmax(0, 1fr) auto; }
+  .speed-list .pill { grid-column: 2; grid-row: 2; justify-self: end; }
+  .speed-good { grid-column: 1; grid-row: 2; }
   .table { display: block; overflow-x: auto; }
   .checks { grid-template-columns: 18px 1fr; }
   .checks li > span:last-child { grid-column: 2; }

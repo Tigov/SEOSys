@@ -40,6 +40,29 @@ export interface GradeResult {
   top_issues: { severity: string; title: string; fix_hint: string }[];
 }
 
+export interface GoogleStatus {
+  provider: "google"; status: "connected" | "expired" | "not_connected"; account_email: string | null; scopes: string[];
+  gsc_site: string | null; ga4_property: string | null; connected_at: string | null; updated_at: string | null;
+  oauth_configured: boolean; pagespeed_configured: boolean;
+}
+export interface GoogleProperties {
+  gsc_sites: { site_url: string; permission: string; verified: boolean }[];
+  ga4_properties: { property: string; name: string; account: string }[]; ga4_error: string | null;
+}
+export interface GscRow { key: string; clicks: number; impressions: number; ctr: number; position: number }
+export interface GscReport {
+  site: string; start: string; end: string; totals: Omit<GscRow, "key">;
+  queries: GscRow[]; pages: GscRow[]; striking_distance: GscRow[];
+}
+export interface Ga4Counts { sessions: number; users: number; key_events: number }
+export interface Ga4Report { property: string; start: string; end: string; totals: Ga4Counts; landing_pages: (Ga4Counts & { page: string })[] }
+export interface PageSpeed {
+  url: string; strategy: "mobile" | "desktop"; performance_score: number | null; field_overall: string | null;
+  field_scope: "page" | "website" | null;
+  field: Partial<Record<"lcp_ms" | "inp_ms" | "cls", { value: number; rating: string }>>;
+  lab: { lcp_ms: number | null; cls: number | null; tbt_ms: number | null }; tested_at: string;
+}
+
 let currentRole: Role = (localStorage.getItem("role") as Role) || "staff";
 export const getRole = () => currentRole;
 export function setRole(role: Role) {
@@ -82,3 +105,4 @@ export async function openHtml(path: string) {
 export const post = <T,>(path: string, body?: unknown) =>
   api<T>(path, { method: "POST", body: body === undefined ? undefined : JSON.stringify(body) });
 export const patch = <T,>(path: string, body: unknown) => api<T>(path, { method: "PATCH", body: JSON.stringify(body) });
+export const del = <T,>(path: string) => api<T>(path, { method: "DELETE" });

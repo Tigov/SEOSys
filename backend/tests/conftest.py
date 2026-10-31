@@ -6,7 +6,11 @@ from pathlib import Path
 # Force test settings even if start.ps1 or .env left other values in this shell.
 os.environ.update({"SEO_DB_PATH": ":memory:", "DEMO_SITE_URL": "http://127.0.0.1:8001",
                    "DEMO_SITE_SECRET": "test-secret", "ALLOW_PRIVATE_HOSTS": "true", "SEED_DEMO_CLIENT": "true",
-                   "DEMO_SITE_STATE": str(Path(tempfile.gettempdir()) / "seo_poc_test_site_state.json")})
+                   "DEMO_SITE_STATE": str(Path(tempfile.gettempdir()) / "seo_poc_test_site_state.json"),
+                   "GOOGLE_OAUTH_CLIENT_ID": "test-client.apps.googleusercontent.com",
+                   "GOOGLE_OAUTH_CLIENT_SECRET": "test-client-secret",
+                   "GOOGLE_OAUTH_REDIRECT_URI": "http://localhost:8000/api/oauth/google/callback",
+                   "GOOGLE_PAGESPEED_API_KEY": "test-psi-key"})
 os.environ.pop("ANTHROPIC_API_KEY", None)  # tests always use the offline writer
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
