@@ -71,6 +71,14 @@ CREATE TABLE IF NOT EXISTS ai_observations (
 CREATE TABLE IF NOT EXISTS alerts (
   id INTEGER PRIMARY KEY, client_id INTEGER, level TEXT, message TEXT, at TEXT, acknowledged INTEGER DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS connections (
+  id INTEGER PRIMARY KEY, client_id INTEGER NOT NULL REFERENCES clients(id), provider TEXT NOT NULL, status TEXT,
+  account_email TEXT, scopes TEXT DEFAULT '[]', access_token TEXT, refresh_token TEXT, expires_at TEXT,
+  gsc_site TEXT, ga4_property TEXT, created_at TEXT, updated_at TEXT
+);
+CREATE TABLE IF NOT EXISTS oauth_states (
+  state TEXT PRIMARY KEY, client_id INTEGER NOT NULL, provider TEXT, actor TEXT, code_verifier TEXT, created_at TEXT
+);
 CREATE INDEX IF NOT EXISTS ix_pages_crawl ON pages(client_id, crawl_id);
 CREATE INDEX IF NOT EXISTS ix_findings_client ON findings(client_id, status);
 CREATE INDEX IF NOT EXISTS ix_changes_client ON change_requests(client_id, status);
@@ -80,7 +88,7 @@ CREATE INDEX IF NOT EXISTS ix_obs_client ON ai_observations(client_id, run_no);
 JSON_COLUMNS = {
     "services", "competitors", "result", "ai_bots_blocked", "sitemap_urls", "redirect_chain", "h1s", "images",
     "links", "jsonld_types", "urls", "evidence", "target", "deploy_result", "verification", "policy_flags",
-    "detail", "brands", "sources",
+    "detail", "brands", "sources", "scopes",
 }
 
 
@@ -168,9 +176,24 @@ class Database:
         self.insert("audit_events", {"client_id": client_id, "actor": actor, "action": action, "target": target,
                                      "detail": detail or {}, "at": now()})
 
+    # ---- OAuth sign-in handshakes (keyed by an unguessable state, not by client) ----
+    def save_oauth_state(self, **values: Any) -> None:
+        self.insert("oauth_states", {**values, "created_at": now()})
+
+    def take_oauth_state(self, state: str, max_age_seconds: int) -> dict[str, Any] | None:
+        """Return and delete a pending sign-in in one step, so a state can be used once. None if unknown or too old."""
+        with self._lock:
+            row = _decode(self.conn.execute("SELECT * FROM oauth_states WHERE state = ?", (state,)).fetchone())
+            self.conn.execute("DELETE FROM oauth_states WHERE state = ?", (state,))
+            self.conn.commit()
+        if row is None:
+            return None
+        age = datetime.now(timezone.utc) - datetime.fromisoformat(row["created_at"])
+        return row if age.total_seconds() <= max_age_seconds else None
+
 
 ALLOWED_TABLES = {"sites", "crawls", "pages", "findings", "change_requests", "audit_events", "usage_events",
-                  "prompts", "ai_observations", "alerts"}
+                  "prompts", "ai_observations", "alerts", "connections"}
 
 
 class ClientRepo:

@@ -26,6 +26,12 @@ class Settings:
     anthropic_api_key: str = field(default_factory=lambda: os.environ.get("ANTHROPIC_API_KEY", ""))
     llm_model: str = field(default_factory=lambda: os.environ.get("SEO_LLM_MODEL", "claude-haiku-5-5"))
     default_monthly_budget_usd: float = field(default_factory=lambda: float(os.environ.get("CLIENT_MONTHLY_BUDGET_USD", "80")))
+    # Google: one OAuth web client for the agency (Search Console + GA4, read-only) and a PageSpeed Insights key.
+    google_client_id: str = field(default_factory=lambda: os.environ.get("GOOGLE_OAUTH_CLIENT_ID", ""))
+    google_client_secret: str = field(default_factory=lambda: os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET", ""))
+    google_redirect_uri: str = field(default_factory=lambda: os.environ.get(
+        "GOOGLE_OAUTH_REDIRECT_URI", "http://localhost:8000/api/oauth/google/callback"))
+    pagespeed_api_key: str = field(default_factory=lambda: os.environ.get("GOOGLE_PAGESPEED_API_KEY", ""))
 
 
 settings = Settings()

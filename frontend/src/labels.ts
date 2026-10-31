@@ -29,6 +29,30 @@ const ACTIONS: Record<string, string> = {
   "change.deploy_conflict": "Deployment stopped because the site had changed",
   "change.auto_rollback": "Rolled back automatically",
   "change.rollback": "Rolled back",
+  "google.connected": "Google connected",
+  "google.declined": "Google sign-in cancelled",
+  "google.connect_failed": "Google sign-in failed",
+  "google.expired": "Google connection expired",
+  "google.disconnected": "Google disconnected",
+  "google.properties_selected": "Google properties chosen",
+};
+
+// What the owner sees after Google sends them back to the portal (?google=<outcome>).
+export const GOOGLE_RETURN: Record<string, { kind: "ok" | "error"; text: string }> = {
+  connected: { kind: "ok", text: "Google connected. Choose which Search Console and Analytics properties to read." },
+  declined: { kind: "error", text: "Google sign-in was cancelled, so nothing was connected." },
+  failed: { kind: "error", text: "Google didn't accept the sign-in. Try Connect Google again." },
+};
+
+// PageSpeed metric names and Google's rating words.
+export const SPEED_METRICS: Record<string, { name: string; unit: "ms" | "" }> = {
+  lcp_ms: { name: "Largest content shows", unit: "ms" },
+  inp_ms: { name: "Responds to a tap or click", unit: "ms" },
+  cls: { name: "Layout stays still", unit: "" },
+  tbt_ms: { name: "Main thread blocked", unit: "ms" },
+};
+export const SPEED_RATING: Record<string, { text: string; pill: string }> = {
+  fast: { text: "Good", pill: "live" }, average: { text: "Needs improvement", pill: "awaiting_client" }, slow: { text: "Poor", pill: "rolled_back" },
 };
 export const actionName = (action: string) => ACTIONS[action] ?? sentence(action.replace(/[._]/g, " "));
 
@@ -93,7 +117,10 @@ export function evidenceRows(evidence: Record<string, unknown>): { label: string
   }));
 }
 
-export const vendorName = (v: string) => sentence(v);
+const VENDORS: Record<string, string> = {
+  google_search_console: "Google Search Console", google_analytics: "Google Analytics", google_pagespeed: "PageSpeed Insights",
+};
+export const vendorName = (v: string) => VENDORS[v] ?? sentence(v);
 
 export function sentence(text: string): string {
   const t = text.trim();
