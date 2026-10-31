@@ -58,6 +58,7 @@ export interface Ga4Counts { sessions: number; users: number; key_events: number
 export interface Ga4Report { property: string; start: string; end: string; totals: Ga4Counts; landing_pages: (Ga4Counts & { page: string })[] }
 export interface PageSpeed {
   url: string; strategy: "mobile" | "desktop"; performance_score: number | null; field_overall: string | null;
+  field_scope: "page" | "website" | null;
   field: Partial<Record<"lcp_ms" | "inp_ms" | "cls", { value: number; rating: string }>>;
   lab: { lcp_ms: number | null; cls: number | null; tbt_ms: number | null }; tested_at: string;
 }

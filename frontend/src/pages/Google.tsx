@@ -3,8 +3,8 @@ import {
   api, del, getRole, patch, post,
   type Ga4Report, type GoogleProperties, type GoogleStatus, type GscReport, type GscRow, type PageSpeed,
 } from "../api";
-import { ActionButton, Empty, ErrorNote, fmtDate, useLoad, useToast } from "../components/ui";
-import { GOOGLE_RETURN, SPEED_METRICS, SPEED_RATING } from "../labels";
+import { ActionButton, ErrorNote, fmtDate, useLoad, useToast } from "../components/ui";
+import { GOOGLE_RETURN, RATING, SEARCH_COLUMNS, SPEED, ratingFor, scoreVerdict, type SpeedKey, type SpeedRating } from "../labels";
 
 const n = (v: number) => v.toLocaleString();
 const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
@@ -63,11 +63,11 @@ function Access({ st, base, reload }: { st: GoogleStatus; base: string; reload: 
           <h2 id="access-title">{expired ? "Reconnect Google" : "Connect Google"}</h2>
           <p>
             {expired
-              ? "Google stopped accepting the saved access, so Search Console and Analytics can't be read. Sign in again to restore it."
+              ? "Google stopped accepting the saved access, so search and visit figures can't be read. Sign in again to restore it."
               : "Sign in with the Google account that manages this website's Search Console and Google Analytics."}
           </p>
           <ul className="access-terms">
-            <li>Read-only: we can see search and visitor data, and can't change anything in Google.</li>
+            <li>Read-only: we can see search and visitor figures, and can't change anything in Google.</li>
             <li>Your password stays with Google. You can remove access at any time.</li>
           </ul>
         </div>
@@ -85,7 +85,7 @@ function Access({ st, base, reload }: { st: GoogleStatus; base: string; reload: 
         </p>
       </div>
       <ActionButton variant="quiet" onRun={async () => {
-        if (!window.confirm("Disconnect Google? Search Console and Analytics data will stop updating until someone reconnects.")) return;
+        if (!window.confirm("Disconnect Google? Search and visit figures will stop updating until someone reconnects.")) return;
         await del(`${base}/connections/google`);
         toast("ok", "Google disconnected.");
         reload();
@@ -100,38 +100,38 @@ function Choose({ st, base, reload }: { st: GoogleStatus; base: string; reload: 
   const [gsc, setGsc] = useState(st.gsc_site ?? "");
   const [ga4, setGa4] = useState(st.ga4_property ?? "");
   if (error) return <ErrorNote text={error} />;
-  if (!props) return <div className="loading">Loading the properties this account can read…</div>;
+  if (!props) return <div className="loading">Loading the websites this account can see…</div>;
   const readable = props.gsc_sites.filter((s) => s.verified);
   const changed = gsc !== (st.gsc_site ?? "") || ga4 !== (st.ga4_property ?? "");
 
   return (
     <section className="panel" aria-labelledby="choose-title">
-      <h2 id="choose-title">What to read</h2>
-      <p className="muted section-lede">Pick this client's website in each Google product.</p>
+      <h2 id="choose-title">Which website to read</h2>
+      <p className="muted section-lede">A Google account can manage several websites. Pick this client's website in each.</p>
       <div className="form-grid">
-        <label>Search Console property
+        <label>Website in Search Console
           <select value={gsc} onChange={(e) => setGsc(e.target.value)}>
-            <option value="">{readable.length ? "Choose a property" : "No verified properties"}</option>
-            {readable.map((s) => <option key={s.site_url} value={s.site_url}>{s.site_url.replace(/^sc-domain:/, "Domain: ")}</option>)}
+            <option value="">{readable.length ? "Choose a website" : "No verified websites"}</option>
+            {readable.map((s) => <option key={s.site_url} value={s.site_url}>{s.site_url.replace(/^sc-domain:/, "All of ")}</option>)}
           </select>
         </label>
-        <label>Google Analytics property
+        <label>Website in Google Analytics
           <select value={ga4} onChange={(e) => setGa4(e.target.value)}>
-            <option value="">{props.ga4_properties.length ? "Choose a property" : "No properties found"}</option>
+            <option value="">{props.ga4_properties.length ? "Choose a website" : "No websites found"}</option>
             {props.ga4_properties.map((p) => <option key={p.property} value={p.property}>{p.name} ({p.account})</option>)}
           </select>
         </label>
       </div>
       {readable.length === 0 && (
-        <p className="note">This account can't read any Search Console property yet. Add the website in Search Console and verify it, then reload this page.</p>
+        <p className="note">This account doesn't manage any verified website in Search Console yet. Add the website there and verify it, then reload this page.</p>
       )}
       {props.ga4_error && (
-        <p className="note">Analytics properties couldn't be listed. Turn on the Google Analytics Admin API in the Google Cloud project, then reload. Google said: {props.ga4_error}</p>
+        <p className="note">Google Analytics websites couldn't be listed. Turn on the Google Analytics Admin API in the Google Cloud project, then reload. Google said: {props.ga4_error}</p>
       )}
       <div className="toolbar spaced">
         <ActionButton disabled={!changed} onRun={async () => {
           await patch(`${base}/connections/google`, { gsc_site: gsc, ga4_property: ga4 });
-          toast("ok", "Saved. Reports below now use these properties.");
+          toast("ok", "Saved. The figures below now come from these websites.");
           reload();
         }}>Save choices</ActionButton>
       </div>
@@ -143,7 +143,8 @@ function RowsTable({ rows, first, empty }: { rows: GscRow[]; first: string; empt
   if (!rows.length) return <p className="muted">{empty}</p>;
   return (
     <table className="table compact">
-      <thead><tr><th>{first}</th><th className="num">Clicks</th><th className="num">Impressions</th><th className="num">Click rate</th><th className="num">Position</th></tr></thead>
+      <thead><tr><th>{first}</th><th className="num">{SEARCH_COLUMNS.clicks}</th><th className="num">{SEARCH_COLUMNS.impressions}</th>
+        <th className="num">{SEARCH_COLUMNS.ctr}</th><th className="num">{SEARCH_COLUMNS.position}</th></tr></thead>
       <tbody>
         {rows.map((r) => (
           <tr key={r.key}>
@@ -163,21 +164,23 @@ function SearchConsole({ base }: { base: string }) {
   if (!r) return <div className="loading">Reading Search Console…</div>;
   return (
     <section className="panel" aria-labelledby="gsc-title">
-      <h2 id="gsc-title">Google search</h2>
-      <p className="muted section-lede">From Search Console, {day(r.start)} to {day(r.end)}. Google reports search data about two days late.</p>
+      <h2 id="gsc-title">How people find the site on Google</h2>
+      <p className="muted section-lede">From Google Search Console, {day(r.start)} to {day(r.end)}. Google shares these figures about two days late.</p>
       <div className="figures">
-        <div className="figure"><span className="figure-label">Clicks from Google</span><span className="figure-n">{n(r.totals.clicks)}</span></div>
-        <div className="figure"><span className="figure-label">Times shown in results</span><span className="figure-n">{n(r.totals.impressions)}</span></div>
-        <div className="figure"><span className="figure-label">Click rate</span><span className="figure-n">{pct(r.totals.ctr)}</span></div>
-        <div className="figure"><span className="figure-label">Average position</span><span className="figure-n">{r.totals.position ? r.totals.position.toFixed(1) : "–"}</span></div>
+        <div className="figure"><span className="figure-label">Clicks from Google search</span><span className="figure-n">{n(r.totals.clicks)}</span></div>
+        <div className="figure"><span className="figure-label">Times the site was shown</span><span className="figure-n">{n(r.totals.impressions)}</span></div>
+        <div className="figure"><span className="figure-label">Share of people who clicked</span><span className="figure-n">{pct(r.totals.ctr)}</span></div>
+        <div className="figure"><span className="figure-label">Average spot in the results</span>
+          <span className="figure-n">{r.totals.position ? r.totals.position.toFixed(1) : "–"}</span>
+          <span className="figure-note">1 is the top result</span></div>
       </div>
-      <h3 className="spaced">Searches close to page one</h3>
-      <p className="muted section-lede">Searches where the site shows in positions 5 to 20. A better page often moves these up first.</p>
-      <RowsTable rows={r.striking_distance} first="Search" empty="None in this period." />
-      <h3 className="spaced">Top searches</h3>
-      <RowsTable rows={r.queries} first="Search" empty="Google hasn't shown the site for any searches in this period." />
-      <h3 className="spaced">Top pages</h3>
-      <RowsTable rows={r.pages} first="Page" empty="No pages had impressions in this period." />
+      <h3 className="spaced">Searches close to the top</h3>
+      <p className="muted section-lede">The site already shows up for these, just below the top results. They are usually the quickest to improve.</p>
+      <RowsTable rows={r.striking_distance} first="What people searched" empty="None in this period." />
+      <h3 className="spaced">Most common searches</h3>
+      <RowsTable rows={r.queries} first="What people searched" empty="Google hasn't shown the site for any searches in this period." />
+      <h3 className="spaced">Pages people reach from Google</h3>
+      <RowsTable rows={r.pages} first="Page" empty="No pages were shown in this period." />
     </section>
   );
 }
@@ -188,18 +191,18 @@ function Analytics({ base }: { base: string }) {
   if (!r) return <div className="loading">Reading Google Analytics…</div>;
   return (
     <section className="panel" aria-labelledby="ga4-title">
-      <h2 id="ga4-title">Website visits</h2>
-      <p className="muted section-lede">From Google Analytics, {day(r.start)} to {day(r.end)}, all traffic sources.</p>
+      <h2 id="ga4-title">Visits to the website</h2>
+      <p className="muted section-lede">From Google Analytics, {day(r.start)} to {day(r.end)}, from every source, not just Google search.</p>
       <div className="figures figures-3">
         <div className="figure"><span className="figure-label">Visits</span><span className="figure-n">{n(r.totals.sessions)}</span></div>
-        <div className="figure"><span className="figure-label">Visitors</span><span className="figure-n">{n(r.totals.users)}</span></div>
-        <div className="figure"><span className="figure-label">Key events</span><span className="figure-n">{n(r.totals.key_events)}</span>
-          <span className="figure-note">Calls, forms and other actions marked as key events in Analytics</span></div>
+        <div className="figure"><span className="figure-label">Different people</span><span className="figure-n">{n(r.totals.users)}</span></div>
+        <div className="figure"><span className="figure-label">Calls, forms and other actions</span><span className="figure-n">{n(r.totals.key_events)}</span>
+          <span className="figure-note">Counts the actions set up as key events in Google Analytics</span></div>
       </div>
       <h3 className="spaced">Pages where visits start</h3>
       {r.landing_pages.length === 0 ? <p className="muted">No visits recorded in this period.</p> : (
         <table className="table compact">
-          <thead><tr><th>Page</th><th className="num">Visits</th><th className="num">Visitors</th><th className="num">Key events</th></tr></thead>
+          <thead><tr><th>Page</th><th className="num">Visits</th><th className="num">Different people</th><th className="num">Actions</th></tr></thead>
           <tbody>
             {r.landing_pages.map((p) => (
               <tr key={p.page}><td className="cell-title">{p.page || "(not set)"}</td><td className="num">{n(p.sessions)}</td>
@@ -212,26 +215,59 @@ function Analytics({ base }: { base: string }) {
   );
 }
 
-function metricValue(key: string, value: number | null | undefined) {
-  if (value === null || value === undefined) return "–";
-  if (SPEED_METRICS[key].unit !== "ms") return value.toFixed(2);
-  return value < 1000 ? `${Math.round(value)} ms` : `${(value / 1000).toFixed(1)} s`;
+interface Measure { key: SpeedKey; value: number; rating: SpeedRating }
+
+// The one sentence to read first: the worst real-visitor problem, or the test visit's when there's no visitor data.
+function headline(field: Measure[], lab: Measure[]): string {
+  const pick = (list: Measure[]) => list.find((m) => m.rating === "slow") ?? list.find((m) => m.rating === "average");
+  const worst = field.length ? pick(field) : pick(lab);
+  if (worst) return SPEED[worst.key].summary(worst.value);
+  return field.length ? "Real visitors get a quick, steady page. Nothing here needs fixing." : "Google's test visit loaded quickly and steadily.";
+}
+
+function MeasureRows({ items }: { items: Measure[] }) {
+  return (
+    <ul className="speed-list">
+      {items.map((m) => (
+        <li key={m.key}>
+          <span className="speed-q">{SPEED[m.key].question}</span>
+          <span className="speed-a">{SPEED[m.key].answer(m.value)}</span>
+          <span className={`pill pill-${RATING[m.rating].pill}`}>{RATING[m.rating].text}</span>
+          <span className="speed-good">{SPEED[m.key].good}</span>
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 function Speed({ base, siteUrl, configured }: { base: string; siteUrl: string; configured: boolean }) {
   const [url, setUrl] = useState(/^https?:\/\/(localhost|127\.|\[::1\])/.test(siteUrl) ? "" : siteUrl);
   const [strategy, setStrategy] = useState<"mobile" | "desktop">("mobile");
   const [result, setResult] = useState<PageSpeed | null>(null);
-  const field = result ? Object.entries(result.field) : [];
+
+  const field: Measure[] = result
+    ? (["lcp_ms", "inp_ms", "cls"] as const).flatMap((key) => {
+      const m = result.field[key];
+      const rating = m && m.rating in RATING ? (m.rating as SpeedRating) : m ? ratingFor(key, m.value) : "fast";
+      return m ? [{ key, value: m.value, rating }] : [];
+    })
+    : [];
+  const lab: Measure[] = result
+    ? (["lcp_ms", "cls", "tbt_ms"] as const).flatMap((key) => {
+      const v = result.lab[key];
+      return v === null ? [] : [{ key, value: v, rating: ratingFor(key, v) }];
+    })
+    : [];
+  const device = result?.strategy === "desktop" ? "computers" : "phones";
 
   return (
     <section className="panel" aria-labelledby="psi-title">
       <h2 id="psi-title">Page speed</h2>
       <p className="muted section-lede">
-        Google's PageSpeed Insights tests the page from Google's servers, so the page must be public. The demo website on this computer can't be tested.
+        Check how quickly a page loads for visitors. Google visits the page from its own servers, so it has to be a live, public page.
       </p>
       {!configured ? (
-        <p className="note">PageSpeed Insights isn't set up on this server. Add GOOGLE_PAGESPEED_API_KEY to the .env file, then restart.</p>
+        <p className="note">Page speed checks aren't set up on this server. Add GOOGLE_PAGESPEED_API_KEY to the .env file, then restart.</p>
       ) : (
         <form className="psi-form" onSubmit={(e) => e.preventDefault()}>
           <label className="psi-url">Page address
@@ -242,7 +278,7 @@ function Speed({ base, siteUrl, configured }: { base: string; siteUrl: string; c
             <button type="button" aria-pressed={strategy === "desktop"} onClick={() => setStrategy("desktop")}>Computer</button>
           </div>
           <ActionButton disabled={!url} onRun={async () => setResult(await post<PageSpeed>(`${base}/google/pagespeed`, { url, strategy }))}>
-            Test page speed
+            Check page speed
           </ActionButton>
         </form>
       )}
@@ -251,32 +287,25 @@ function Speed({ base, siteUrl, configured }: { base: string; siteUrl: string; c
           <div className="psi-score">
             <span className="health-number">{result.performance_score ?? "–"}</span>
             <span className="health-of">/ 100</span>
-            <p className="muted">Lab score on a {result.strategy === "mobile" ? "phone" : "computer"} for {result.url}</p>
+            {result.performance_score !== null && <p className="psi-verdict">{scoreVerdict(result.performance_score)}</p>}
+            <p className="muted">Google's speed score for one test visit on a {result.strategy === "mobile" ? "phone" : "computer"}. 90 or more is fast.</p>
           </div>
-          <div>
-            <h3>Real visitors, last 28 days</h3>
-            {field.length === 0 ? (
-              <Empty title="Not enough real-visitor data.">
-                <p>Chrome only reports this for pages with enough visits. The lab test below still applies.</p>
-              </Empty>
-            ) : (
-              <table className="table compact">
-                <tbody>
-                  {field.map(([k, m]) => (
-                    <tr key={k}><td>{SPEED_METRICS[k].name}</td><td className="num">{metricValue(k, m!.value)}</td>
-                      <td><span className={`pill pill-${SPEED_RATING[m!.rating]?.pill ?? ""}`}>{SPEED_RATING[m!.rating]?.text ?? m!.rating}</span></td></tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-            <h3 className="spaced">This lab test</h3>
-            <table className="table compact">
-              <tbody>
-                {(["lcp_ms", "cls", "tbt_ms"] as const).map((k) => (
-                  <tr key={k}><td>{SPEED_METRICS[k].name}</td><td className="num">{metricValue(k, result.lab[k])}</td></tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="psi-detail">
+            <p className="psi-headline">{headline(field, lab)}</p>
+            <h3>What real visitors experienced</h3>
+            <p className="muted section-lede">
+              {field.length === 0
+                ? "Not enough people visit this page yet for Google to report on it, so the test visit below is the best guide."
+                : result.field_scope === "website"
+                  ? `This page doesn't get enough visits for its own figures, so these are for the whole website. Visitors on ${device}, last 28 days.`
+                  : `Visitors on ${device} using Chrome, last 28 days. Three out of four visits were at least this good.`}
+            </p>
+            {field.length > 0 && <MeasureRows items={field} />}
+            <details className="psi-more" open={field.length === 0}>
+              <summary>Google's test visit, in detail</summary>
+              <p className="muted">One visit Google made just now on a fast connection. Real visitors are often slower, so the figures above matter more.</p>
+              <MeasureRows items={lab} />
+            </details>
           </div>
         </div>
       )}

@@ -360,7 +360,12 @@ async def pagespeed(repo: ClientRepo, url: str | None, strategy: str = "mobile")
         raise GoogleError(f"PageSpeed Insights could not test {target}: {_google_message(resp)}")
     data = resp.json()
     repo.meter("google_pagespeed", "test", 1, 0.0)
-    field_raw = data.get("loadingExperience", {}).get("metrics", {})
+    # Real-visitor data is for this page when Google has enough of it, otherwise for the whole website.
+    experience = data.get("loadingExperience", {})
+    if not experience.get("metrics") and data.get("originLoadingExperience", {}).get("metrics"):
+        experience = {**data["originLoadingExperience"], "origin_fallback": True}
+    field_raw = experience.get("metrics", {})
+    field_scope = None if not field_raw else "website" if experience.get("origin_fallback") else "page"
     field = {label: {"value": round(m["percentile"] / div, 3) if div != 1 else int(m["percentile"]),
                      "rating": str(m.get("category", "")).lower()}
              for key, label, div in FIELD_METRICS if (m := field_raw.get(key))}
@@ -373,7 +378,8 @@ async def pagespeed(repo: ClientRepo, url: str | None, strategy: str = "mobile")
     score = data.get("lighthouseResult", {}).get("categories", {}).get("performance", {}).get("score")
     return {"source": "PageSpeed Insights", "url": target, "strategy": strategy,
             "performance_score": None if score is None else round(score * 100),
-            "field": field, "field_overall": str(data.get("loadingExperience", {}).get("overall_category", "")).lower() or None,
+            "field": field, "field_scope": field_scope,
+            "field_overall": str(experience.get("overall_category", "")).lower() or None,
             "lab": {"lcp_ms": lab("largest-contentful-paint", 0), "cls": lab("cumulative-layout-shift", 3),
                     "tbt_ms": lab("total-blocking-time", 0)},
             "tested_at": now()}

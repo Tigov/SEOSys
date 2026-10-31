@@ -27,6 +27,7 @@ class FakeGoogle:
         self.token_calls = 0
         self.refresh_fails = False
         self.access_token = "access-1"
+        self.psi = _psi_body  # tests swap this to shape the PageSpeed answer
 
     def handle(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
@@ -73,7 +74,7 @@ class FakeGoogle:
             return httpx.Response(200, json={"rows": [
                 {"metricValues": [{"value": "1000"}, {"value": "800"}, {"value": "30"}]}]})
         if host == "www.googleapis.com" and path == "/pagespeedonline/v5/runPagespeed":
-            return httpx.Response(200, json=_psi_body(request.url.params["url"]))
+            return httpx.Response(200, json=self.psi(request.url.params["url"]))
         return httpx.Response(404, json={"error": {"code": 404, "message": f"no fake for {host}{path}"}})
 
 
@@ -306,6 +307,31 @@ def test_pagespeed_for_a_public_url(api, fake):
     sent = next(q for q in fake.requests if q.url.path.endswith("runPagespeed"))
     assert sent.url.params["key"] == "test-psi-key" and sent.url.params["strategy"] == "mobile"
     assert any(u["vendor"] == "google_pagespeed" for u in api.get("/api/ops/usage", headers=STAFF).json())
+
+
+def test_pagespeed_says_whether_visitor_data_is_for_the_page_or_whole_site(api, fake):
+    rep = api.post("/api/clients/1/google/pagespeed", json={"url": "https://example.com/"}, headers=STAFF).json()
+    assert rep["field_scope"] == "page"
+
+    def fallback(url):  # Google's shape when the page has too few visits: the origin's data, flagged
+        body = _psi_body(url)
+        body["loadingExperience"]["origin_fallback"] = True
+        return body
+
+    fake.psi = fallback
+    rep = api.post("/api/clients/1/google/pagespeed", json={"url": "https://example.com/quiet-page"}, headers=STAFF).json()
+    assert rep["field_scope"] == "website" and rep["field"]["lcp_ms"]["value"] == 2900
+
+
+def test_pagespeed_with_no_visitor_data_at_all(api, fake):
+    def none(url):
+        body = _psi_body(url)
+        body["loadingExperience"] = {"id": url}
+        return body
+
+    fake.psi = none
+    rep = api.post("/api/clients/1/google/pagespeed", json={"url": "https://example.com/new"}, headers=STAFF).json()
+    assert rep["field"] == {} and rep["field_scope"] is None and rep["performance_score"] == 72
 
 
 def test_pagespeed_defaults_to_the_client_site_and_explains_localhost(api, fake):

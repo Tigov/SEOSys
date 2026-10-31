@@ -44,15 +44,58 @@ export const GOOGLE_RETURN: Record<string, { kind: "ok" | "error"; text: string 
   failed: { kind: "error", text: "Google didn't accept the sign-in. Try Connect Google again." },
 };
 
-// PageSpeed metric names and Google's rating words.
-export const SPEED_METRICS: Record<string, { name: string; unit: "ms" | "" }> = {
-  lcp_ms: { name: "Largest content shows", unit: "ms" },
-  inp_ms: { name: "Responds to a tap or click", unit: "ms" },
-  cls: { name: "Layout stays still", unit: "" },
-  tbt_ms: { name: "Main thread blocked", unit: "ms" },
+// ---------- Page speed, in words a business owner uses ----------
+// Each measure is a question with a plain answer. Cut-offs are Google's own (web.dev Core Web Vitals).
+export type SpeedKey = "lcp_ms" | "inp_ms" | "cls" | "tbt_ms";
+export type SpeedRating = "fast" | "average" | "slow";
+
+const seconds = (ms: number) => {
+  const s = ms / 1000;
+  const text = s < 1 ? s.toFixed(2).replace(/0$/, "") : s.toFixed(1).replace(/\.0$/, "");
+  return `${text} ${text === "1" ? "second" : "seconds"}`;
 };
-export const SPEED_RATING: Record<string, { text: string; pill: string }> = {
-  fast: { text: "Good", pill: "live" }, average: { text: "Needs improvement", pill: "awaiting_client" }, slow: { text: "Poor", pill: "rolled_back" },
+const movement = (cls: number) => (cls <= 0.1 ? "Hardly at all" : cls <= 0.25 ? "A little" : "A lot");
+
+export const SPEED: Record<SpeedKey, {
+  question: string; answer: (v: number) => string; good: string; limits: [number, number];
+  summary: (v: number) => string;
+}> = {
+  lcp_ms: {
+    question: "How long until the page shows its main content",
+    answer: seconds, good: "Good is under 2.5 seconds", limits: [2500, 4000],
+    summary: (v) => `Visitors wait about ${seconds(v)} before the main content shows. Google counts over 4 seconds as slow.`,
+  },
+  inp_ms: {
+    question: "How quickly it reacts when someone taps or clicks",
+    answer: seconds, good: "Good is under 0.2 seconds", limits: [200, 500],
+    summary: (v) => `After a tap or click, visitors wait about ${seconds(v)} for the page to react. Under 0.2 seconds feels instant.`,
+  },
+  cls: {
+    question: "How much things jump around while it loads",
+    answer: movement, good: "Good is when content stays put", limits: [0.1, 0.25],
+    summary: () => "Text and buttons move around while the page loads, so visitors can tap the wrong thing.",
+  },
+  tbt_ms: {
+    question: "How long the page was too busy to respond",
+    answer: seconds, good: "Good is under 0.2 seconds", limits: [200, 600],
+    summary: (v) => `The page was too busy to respond for ${seconds(v)} while loading.`,
+  },
+};
+
+export const ratingFor = (key: SpeedKey, value: number): SpeedRating =>
+  value <= SPEED[key].limits[0] ? "fast" : value <= SPEED[key].limits[1] ? "average" : "slow";
+
+export const RATING: Record<SpeedRating, { text: string; pill: string }> = {
+  fast: { text: "Good", pill: "live" }, average: { text: "Needs work", pill: "awaiting_client" }, slow: { text: "Poor", pill: "rolled_back" },
+};
+
+// Google's 0-100 score bands for a single test visit.
+export const scoreVerdict = (score: number) =>
+  score >= 90 ? "Fast" : score >= 50 ? "Could be faster" : "Slow";
+
+// ---------- Search Console and Analytics figures ----------
+export const SEARCH_COLUMNS = {
+  clicks: "Clicks", impressions: "Times shown", ctr: "Share who clicked", position: "Average spot",
 };
 export const actionName = (action: string) => ACTIONS[action] ?? sentence(action.replace(/[._]/g, " "));
 
