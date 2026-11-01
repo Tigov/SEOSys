@@ -1,160 +1,186 @@
-"""SQLite persistence for the proof of concept.
+"""Postgres persistence.
 
-Production target (TDD section 5) is Postgres with row-level security. Here every
-client-owned table carries client_id and all access goes through `ClientRepo`,
-which always filters by the client it was created for. Tests assert that one
-client can never read another client's rows.
+Every client-owned table carries client_id and all client access goes through `ClientRepo`, which filters by
+the client it was created for and runs each statement with `app.client_id` set, so row-level security (a
+second, database-side lock) only shows that client's rows. Agency-level code uses `Database` directly, which
+runs with `app.scope = 'system'`.
+
+Queries use `?` placeholders; values are always sent to Postgres as bound parameters, never pasted into SQL.
+Single statements commit on their own. Wrap multi-step writes in `with db.transaction():`. Never hold a
+transaction open across a call to an outside service.
 """
 from __future__ import annotations
 
+import ipaddress
 import json
-import sqlite3
-import threading
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Any, Iterable
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass
+from datetime import date, datetime, timezone
+from decimal import Decimal
+from typing import Any, Iterable, Iterator
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS clients (
-  id INTEGER PRIMARY KEY, name TEXT NOT NULL, city TEXT, region TEXT, phone TEXT, street TEXT, postal_code TEXT,
-  services TEXT DEFAULT '[]', competitors TEXT DEFAULT '[]',
-  auto_approve_low INTEGER DEFAULT 0, freeze_deploys INTEGER DEFAULT 0,
-  monthly_budget_usd REAL DEFAULT 80, created_at TEXT
-);
-CREATE TABLE IF NOT EXISTS sites (
-  id INTEGER PRIMARY KEY, client_id INTEGER NOT NULL REFERENCES clients(id),
-  base_url TEXT NOT NULL, cms TEXT NOT NULL, adapter_secret TEXT, created_at TEXT
-);
-CREATE TABLE IF NOT EXISTS leads (
-  id INTEGER PRIMARY KEY, url TEXT, email TEXT, business_name TEXT, city TEXT,
-  score INTEGER, result TEXT, created_at TEXT
-);
-CREATE TABLE IF NOT EXISTS crawls (
-  id INTEGER PRIMARY KEY, client_id INTEGER NOT NULL, site_id INTEGER, kind TEXT,
-  started_at TEXT, finished_at TEXT, pages_crawled INTEGER, health_score INTEGER,
-  robots_txt TEXT, ai_bots_blocked TEXT DEFAULT '[]', sitemap_urls TEXT DEFAULT '[]'
-);
-CREATE TABLE IF NOT EXISTS pages (
-  id INTEGER PRIMARY KEY, client_id INTEGER NOT NULL, crawl_id INTEGER NOT NULL,
-  url TEXT, path TEXT, status INTEGER, final_url TEXT, redirect_chain TEXT DEFAULT '[]',
-  title TEXT, meta_description TEXT, h1s TEXT DEFAULT '[]', canonical TEXT, noindex INTEGER,
-  word_count INTEGER, images TEXT DEFAULT '[]', links TEXT DEFAULT '[]', jsonld_types TEXT DEFAULT '[]',
-  in_sitemap INTEGER
-);
-CREATE TABLE IF NOT EXISTS findings (
-  id INTEGER PRIMARY KEY, client_id INTEGER NOT NULL, crawl_id INTEGER, fingerprint TEXT,
-  rule_id TEXT, severity TEXT, title TEXT, urls TEXT DEFAULT '[]', evidence TEXT DEFAULT '{}',
-  effort TEXT, impact INTEGER, fix_hint TEXT, fix_type TEXT, status TEXT DEFAULT 'open',
-  first_seen TEXT, last_seen TEXT, resolved_at TEXT
-);
-CREATE TABLE IF NOT EXISTS change_requests (
-  id INTEGER PRIMARY KEY, client_id INTEGER NOT NULL, site_id INTEGER NOT NULL, finding_id INTEGER,
-  type TEXT, target TEXT, before_value TEXT, after_value TEXT, risk TEXT, status TEXT,
-  reason TEXT, author TEXT, approved_by TEXT, deploy_result TEXT, verification TEXT,
-  policy_flags TEXT DEFAULT '[]', created_at TEXT, updated_at TEXT
-);
-CREATE TABLE IF NOT EXISTS audit_events (
-  id INTEGER PRIMARY KEY, client_id INTEGER, actor TEXT, action TEXT, target TEXT,
-  detail TEXT DEFAULT '{}', at TEXT
-);
-CREATE TABLE IF NOT EXISTS usage_events (
-  id INTEGER PRIMARY KEY, client_id INTEGER, vendor TEXT, unit TEXT, qty REAL, cost_usd REAL, at TEXT
-);
-CREATE TABLE IF NOT EXISTS prompts (
-  id INTEGER PRIMARY KEY, client_id INTEGER NOT NULL, text TEXT, cluster TEXT, created_at TEXT
-);
-CREATE TABLE IF NOT EXISTS ai_observations (
-  id INTEGER PRIMARY KEY, client_id INTEGER NOT NULL, prompt_id INTEGER, run_no INTEGER,
-  engine TEXT, method TEXT, run_at TEXT, mentioned INTEGER, position INTEGER, cited_url TEXT,
-  brands TEXT DEFAULT '[]', sources TEXT DEFAULT '[]', answer TEXT
-);
-CREATE TABLE IF NOT EXISTS alerts (
-  id INTEGER PRIMARY KEY, client_id INTEGER, level TEXT, message TEXT, at TEXT, acknowledged INTEGER DEFAULT 0
-);
-CREATE TABLE IF NOT EXISTS connections (
-  id INTEGER PRIMARY KEY, client_id INTEGER NOT NULL REFERENCES clients(id), provider TEXT NOT NULL, status TEXT,
-  account_email TEXT, scopes TEXT DEFAULT '[]', access_token TEXT, refresh_token TEXT, expires_at TEXT,
-  gsc_site TEXT, ga4_property TEXT, created_at TEXT, updated_at TEXT
-);
-CREATE TABLE IF NOT EXISTS oauth_states (
-  state TEXT PRIMARY KEY, client_id INTEGER NOT NULL, provider TEXT, actor TEXT, code_verifier TEXT, created_at TEXT
-);
-CREATE INDEX IF NOT EXISTS ix_pages_crawl ON pages(client_id, crawl_id);
-CREATE INDEX IF NOT EXISTS ix_findings_client ON findings(client_id, status);
-CREATE INDEX IF NOT EXISTS ix_changes_client ON change_requests(client_id, status);
-CREATE INDEX IF NOT EXISTS ix_obs_client ON ai_observations(client_id, run_no);
-"""
+from psycopg.types.json import Jsonb
+from sqlalchemy import Boolean, create_engine
+from sqlalchemy.engine import Connection
 
-JSON_COLUMNS = {
-    "services", "competitors", "result", "ai_bots_blocked", "sitemap_urls", "redirect_chain", "h1s", "images",
-    "links", "jsonld_types", "urls", "evidence", "target", "deploy_result", "verification", "policy_flags",
-    "detail", "brands", "sources", "scopes",
-}
+from . import clock, crypto
+from .config import settings
+from .schema import CLIENT_TABLES, ENCRYPTED, JSON_COLUMNS, metadata
+
+ENCRYPTED_NAMES = frozenset(col for _, col in ENCRYPTED)
+_BOOL_COLUMNS = {(t.name, c.name) for t in metadata.tables.values() for c in t.columns if isinstance(c.type, Boolean)}
+_HAS_ID = {t.name for t in metadata.tables.values() if "id" in t.c and t.c.id.identity is not None}
 
 
 def now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return clock.now().isoformat(timespec="seconds")
 
 
-def _decode(row: sqlite3.Row | None) -> dict[str, Any] | None:
+def to_sql(sql: str) -> str:
+    """Turn `?` placeholders into psycopg's `%s`, leaving quoted literals untouched and escaping literal `%`."""
+    out, quote = [], ""
+    for ch in sql:
+        if quote:
+            out.append("%%" if ch == "%" else ch)
+            if ch == quote:
+                quote = ""
+        elif ch in ("'", '"'):
+            quote = ch
+            out.append(ch)
+        elif ch == "?":
+            out.append("%s")
+        elif ch == "%":
+            out.append("%%")
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def _param(value: Any) -> Any:
+    return Jsonb(value) if isinstance(value, (dict, list)) else value
+
+
+def _decode_value(key: str, val: Any) -> Any:
+    if isinstance(val, datetime):
+        return val.astimezone(timezone.utc).isoformat(timespec="seconds")
+    if isinstance(val, date):
+        return val.isoformat()
+    if isinstance(val, Decimal):
+        return float(val)
+    if isinstance(val, (ipaddress.IPv4Address, ipaddress.IPv6Address)):
+        return str(val)
+    if key in ENCRYPTED_NAMES and crypto.is_encrypted(val):
+        return crypto.decrypt(val)
+    return val
+
+
+def _decode(row: Any) -> dict[str, Any] | None:
     if row is None:
         return None
+    return {key: _decode_value(key, val) for key, val in row._mapping.items()}
+
+
+def _encode(table: str, values: dict[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {}
-    for key in row.keys():
-        val = row[key]
-        if key in JSON_COLUMNS and isinstance(val, str):
-            try:
-                val = json.loads(val)
-            except json.JSONDecodeError:
-                pass
-        out[key] = val
+    for key, val in values.items():
+        if (table, key) in JSON_COLUMNS and isinstance(val, str):
+            val = json.loads(val)
+        if (table, key) in _BOOL_COLUMNS and isinstance(val, int):
+            val = bool(val)
+        if (table, key) in ENCRYPTED and val is not None and not crypto.is_encrypted(val):
+            val = crypto.encrypt(str(val))
+        out[key] = _param(val)
     return out
 
 
-def _encode(values: dict[str, Any]) -> dict[str, Any]:
-    return {k: (json.dumps(v) if k in JSON_COLUMNS and not isinstance(v, str) else v) for k, v in values.items()}
+def _check_identifier(name: str) -> str:
+    if name not in metadata.tables and not name.isidentifier():
+        raise ValueError(f"Unsafe identifier: {name}")
+    return name
+
+
+@dataclass(frozen=True)
+class Result:
+    rows: list[Any]
+    rowcount: int
+
+    def fetchall(self) -> list[Any]:
+        return self.rows
+
+    def fetchone(self) -> Any:
+        return self.rows[0] if self.rows else None
+
+    def scalar_one(self) -> Any:
+        return self.rows[0][0]
 
 
 class Database:
-    def __init__(self, path: Path | str) -> None:
-        self.path = str(path)
-        if self.path != ":memory:":
-            Path(self.path).parent.mkdir(parents=True, exist_ok=True)
-        self._lock = threading.RLock()
-        self.conn = sqlite3.connect(self.path, check_same_thread=False)
-        self.conn.row_factory = sqlite3.Row
-        self.conn.execute("PRAGMA foreign_keys = ON")
-        self.conn.executescript(SCHEMA)
-        self.conn.commit()
+    def __init__(self, url: str | None = None) -> None:
+        self.url = url or settings.database_url
+        self.engine = create_engine(self.url, pool_size=settings.db_pool_size, max_overflow=settings.db_pool_size,
+                                    pool_pre_ping=True)
+        self._tx: ContextVar[Connection | None] = ContextVar(f"tx_{id(self)}", default=None)
 
-    # ---- low-level helpers ----
+    def dispose(self) -> None:
+        self.engine.dispose()
+
+    # ---- execution ----
+    @contextmanager
+    def transaction(self) -> Iterator[Connection]:
+        """One atomic unit. Nested calls join the outer transaction."""
+        current = self._tx.get()
+        if current is not None:
+            yield current
+            return
+        with self.engine.begin() as conn:
+            token = self._tx.set(conn)
+            try:
+                yield conn
+            finally:
+                self._tx.reset(token)
+
+    def run(self, sql: str, params: Iterable[Any] = (), client_id: int | None = None) -> Result:
+        """Execute one statement with the row-level-security scope set; rows are fetched before returning."""
+        scope = ("", str(client_id)) if client_id is not None else ("system", "")
+        with self.transaction() as conn:
+            conn.exec_driver_sql("SELECT set_config('app.scope', %s, true), set_config('app.client_id', %s, true)", scope)
+            result = conn.exec_driver_sql(to_sql(sql), tuple(_param(p) for p in params))
+            return Result(result.fetchall() if result.returns_rows else [], result.rowcount)
+
+    # ---- low-level helpers (agency scope) ----
     def query(self, sql: str, params: Iterable[Any] = ()) -> list[dict[str, Any]]:
-        with self._lock:
-            return [_decode(r) for r in self.conn.execute(sql, tuple(params)).fetchall()]  # type: ignore[misc]
+        return [_decode(r) for r in self.run(sql, params).fetchall()]  # type: ignore[misc]
 
     def one(self, sql: str, params: Iterable[Any] = ()) -> dict[str, Any] | None:
-        with self._lock:
-            return _decode(self.conn.execute(sql, tuple(params)).fetchone())
+        return _decode(self.run(sql, params).fetchone())
 
-    def insert(self, table: str, values: dict[str, Any]) -> int:
-        vals = _encode(values)
-        cols = ", ".join(vals)
+    def execute(self, sql: str, params: Iterable[Any] = ()) -> int:
+        return self.run(sql, params).rowcount
+
+    def insert(self, table: str, values: dict[str, Any], client_id: int | None = None) -> int:
+        vals = _encode(_check_identifier(table), values)
+        cols = ", ".join(_check_identifier(k) for k in vals)
         marks = ", ".join("?" for _ in vals)
-        with self._lock:
-            cur = self.conn.execute(f"INSERT INTO {table} ({cols}) VALUES ({marks})", tuple(vals.values()))
-            self.conn.commit()
-            return int(cur.lastrowid)
+        returning = " RETURNING id" if table in _HAS_ID else ""
+        result = self.run(f"INSERT INTO {table} ({cols}) VALUES ({marks}){returning}", tuple(vals.values()), client_id)
+        return int(result.scalar_one()) if returning else 0
 
-    def execute(self, sql: str, params: Iterable[Any] = ()) -> None:
-        with self._lock:
-            self.conn.execute(sql, tuple(params))
-            self.conn.commit()
+    def update_row(self, table: str, where: str, where_params: Iterable[Any], values: dict[str, Any],
+                   client_id: int | None = None) -> int:
+        vals = _encode(_check_identifier(table), values)
+        sets = ", ".join(f"{_check_identifier(k)} = ?" for k in vals)
+        return self.run(f"UPDATE {table} SET {sets} WHERE {where}", (*vals.values(), *where_params), client_id).rowcount
 
     def wipe(self) -> None:
-        with self._lock:
-            for (name,) in self.conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall():
-                self.conn.execute(f"DELETE FROM {name}")
-            self.conn.commit()
+        """Empty every table (tests and the local demo reset only). Needs the owner role."""
+        tables = ", ".join(metadata.tables)
+        owner = create_engine(settings.database_owner_url)
+        try:
+            with owner.begin() as conn:
+                conn.exec_driver_sql(f"TRUNCATE {tables} RESTART IDENTITY CASCADE")
+        finally:
+            owner.dispose()
 
     # ---- cross-client (agency-level) operations ----
     def list_clients(self) -> list[dict[str, Any]]:
@@ -164,7 +190,6 @@ class Database:
         return self.one("SELECT * FROM clients WHERE id = ?", (client_id,))
 
     def create_client(self, **values: Any) -> int:
-        values.setdefault("created_at", now())
         return self.insert("clients", values)
 
     def for_client(self, client_id: int) -> "ClientRepo":
@@ -172,9 +197,10 @@ class Database:
             raise LookupError(f"Client {client_id} was not found.")
         return ClientRepo(self, client_id)
 
-    def log(self, client_id: int | None, actor: str, action: str, target: str = "", detail: dict[str, Any] | None = None) -> None:
+    def log(self, client_id: int | None, actor: str, action: str, target: str = "", detail: dict[str, Any] | None = None,
+            **extra: Any) -> None:
         self.insert("audit_events", {"client_id": client_id, "actor": actor, "action": action, "target": target,
-                                     "detail": detail or {}, "at": now()})
+                                     "detail": detail or {}, "at": now(), **extra})
 
     # ---- OAuth sign-in handshakes (keyed by an unguessable state, not by client) ----
     def save_oauth_state(self, **values: Any) -> None:
@@ -182,18 +208,11 @@ class Database:
 
     def take_oauth_state(self, state: str, max_age_seconds: int) -> dict[str, Any] | None:
         """Return and delete a pending sign-in in one step, so a state can be used once. None if unknown or too old."""
-        with self._lock:
-            row = _decode(self.conn.execute("SELECT * FROM oauth_states WHERE state = ?", (state,)).fetchone())
-            self.conn.execute("DELETE FROM oauth_states WHERE state = ?", (state,))
-            self.conn.commit()
+        row = _decode(self.run("DELETE FROM oauth_states WHERE state = ? RETURNING *", (state,)).fetchone())
         if row is None:
             return None
-        age = datetime.now(timezone.utc) - datetime.fromisoformat(row["created_at"])
+        age = clock.now() - datetime.fromisoformat(row["created_at"])
         return row if age.total_seconds() <= max_age_seconds else None
-
-
-ALLOWED_TABLES = {"sites", "crawls", "pages", "findings", "change_requests", "audit_events", "usage_events",
-                  "prompts", "ai_observations", "alerts", "connections"}
 
 
 class ClientRepo:
@@ -204,8 +223,11 @@ class ClientRepo:
         self.client_id = client_id
 
     def _check(self, table: str) -> None:
-        if table not in ALLOWED_TABLES:
+        if table not in CLIENT_TABLES:
             raise ValueError(f"table not client-scoped: {table}")
+
+    def _run(self, sql: str, params: Iterable[Any] = ()) -> Any:
+        return self.db.run(sql, params, client_id=self.client_id)
 
     def client(self) -> dict[str, Any]:
         row = self.db.get_client(self.client_id)
@@ -213,29 +235,25 @@ class ClientRepo:
         return row
 
     def update_client(self, **values: Any) -> None:
-        vals = _encode(values)
-        sets = ", ".join(f"{k} = ?" for k in vals)
-        self.db.execute(f"UPDATE clients SET {sets} WHERE id = ?", (*vals.values(), self.client_id))
+        self.db.update_row("clients", "id = ?", (self.client_id,), values)
 
     def insert(self, table: str, values: dict[str, Any]) -> int:
         self._check(table)
-        return self.db.insert(table, {**values, "client_id": self.client_id})
+        return self.db.insert(table, {**values, "client_id": self.client_id}, client_id=self.client_id)
 
     def get(self, table: str, row_id: int) -> dict[str, Any] | None:
         self._check(table)
-        return self.db.one(f"SELECT * FROM {table} WHERE id = ? AND client_id = ?", (row_id, self.client_id))
+        return _decode(self._run(f"SELECT * FROM {table} WHERE id = ? AND client_id = ?", (row_id, self.client_id)).fetchone())
 
     def list(self, table: str, where: str = "", params: Iterable[Any] = (), order: str = "id") -> list[dict[str, Any]]:
         self._check(table)
         clause = f" AND ({where})" if where else ""
-        return self.db.query(f"SELECT * FROM {table} WHERE client_id = ?{clause} ORDER BY {order}",
-                             (self.client_id, *params))
+        rows = self._run(f"SELECT * FROM {table} WHERE client_id = ?{clause} ORDER BY {order}", (self.client_id, *params))
+        return [_decode(r) for r in rows.fetchall()]  # type: ignore[misc]
 
     def update(self, table: str, row_id: int, **values: Any) -> None:
         self._check(table)
-        vals = _encode(values)
-        sets = ", ".join(f"{k} = ?" for k in vals)
-        self.db.execute(f"UPDATE {table} SET {sets} WHERE id = ? AND client_id = ?", (*vals.values(), row_id, self.client_id))
+        self.db.update_row(table, "id = ? AND client_id = ?", (row_id, self.client_id), values, client_id=self.client_id)
 
     def site(self) -> dict[str, Any]:
         """Full site row, including the adapter secret. Only for server-side use (adapters)."""
@@ -251,30 +269,26 @@ class ClientRepo:
     def claim(self, table: str, row_id: int, from_status: str, to_status: str, **values: Any) -> bool:
         """Atomically move a row from one status to another. False if another request got there first."""
         self._check(table)
-        vals = _encode({"status": to_status, **values})
-        sets = ", ".join(f"{k} = ?" for k in vals)
-        with self.db._lock:
-            cur = self.db.conn.execute(
-                f"UPDATE {table} SET {sets} WHERE id = ? AND client_id = ? AND status = ?",
-                (*vals.values(), row_id, self.client_id, from_status))
-            self.db.conn.commit()
-            return cur.rowcount == 1
+        changed = self.db.update_row(table, "id = ? AND client_id = ? AND status = ?", (row_id, self.client_id, from_status),
+                                     {"status": to_status, **values}, client_id=self.client_id)
+        return changed == 1
 
     def latest_crawl(self, kinds: tuple[str, ...] = ("audit",)) -> dict[str, Any] | None:
         marks = ",".join("?" for _ in kinds)
         rows = self.list("crawls", f"kind IN ({marks}) AND finished_at IS NOT NULL", kinds, order="id DESC")
         return rows[0] if rows else None
 
-    def log(self, actor: str, action: str, target: str = "", detail: dict[str, Any] | None = None) -> None:
-        self.db.log(self.client_id, actor, action, target, detail)
+    def log(self, actor: str, action: str, target: str = "", detail: dict[str, Any] | None = None, **extra: Any) -> None:
+        self.insert("audit_events", {"actor": actor, "action": action, "target": target, "detail": detail or {},
+                                     "at": now(), **extra})
 
     def meter(self, vendor: str, unit: str, qty: float, cost_usd: float) -> None:
         self.insert("usage_events", {"vendor": vendor, "unit": unit, "qty": qty, "cost_usd": cost_usd, "at": now()})
 
     def month_spend(self) -> float:
-        month = now()[:7]
-        row = self.db.one("SELECT COALESCE(SUM(cost_usd), 0) AS s FROM usage_events WHERE client_id = ? AND substr(at, 1, 7) = ?",
-                          (self.client_id, month))
+        start = clock.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        row = _decode(self._run("SELECT COALESCE(SUM(cost_usd), 0) AS s FROM usage_events WHERE client_id = ? AND at >= ?",
+                                (self.client_id, start)).fetchone())
         return float(row["s"]) if row else 0.0
 
     def alert(self, level: str, message: str) -> None:

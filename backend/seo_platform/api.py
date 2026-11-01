@@ -99,11 +99,11 @@ def seed_demo(db: Database) -> None:
 
 
 def create_app(db: Database | None = None) -> FastAPI:
-    database = db or Database(settings.db_path)
+    database = db or Database(settings.database_url)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-        if settings.seed_demo_client:
+        if not settings.is_production:
             seed_demo(database)
         yield
 

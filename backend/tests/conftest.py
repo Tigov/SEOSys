@@ -4,28 +4,82 @@ import tempfile
 from pathlib import Path
 
 # Force test settings even if start.ps1 or .env left other values in this shell.
-os.environ.update({"SEO_DB_PATH": ":memory:", "DEMO_SITE_URL": "http://127.0.0.1:8001",
+_PG = "postgresql+psycopg://{user}:{password}@127.0.0.1:5432/seosys_test"
+os.environ.update({"APP_ENV": "test",
+                   "DATABASE_URL": _PG.format(user="seosys_app", password="seosys_app_local"),
+                   "DATABASE_OWNER_URL": _PG.format(user="seosys_owner", password="seosys_owner_local"),
+                   "DEMO_SITE_URL": "http://127.0.0.1:8001",
                    "DEMO_SITE_SECRET": "test-secret", "ALLOW_PRIVATE_HOSTS": "true", "SEED_DEMO_CLIENT": "true",
                    "DEMO_SITE_STATE": str(Path(tempfile.gettempdir()) / "seo_poc_test_site_state.json"),
                    "GOOGLE_OAUTH_CLIENT_ID": "test-client.apps.googleusercontent.com",
                    "GOOGLE_OAUTH_CLIENT_SECRET": "test-client-secret",
                    "GOOGLE_OAUTH_REDIRECT_URI": "http://localhost:8000/api/oauth/google/callback",
                    "GOOGLE_PAGESPEED_API_KEY": "test-psi-key"})
-os.environ.pop("ANTHROPIC_API_KEY", None)  # tests always use the offline writer
+for _name in ("ANTHROPIC_API_KEY", "APP_ENCRYPTION_KEY", "APP_ENCRYPTION_KEYS_OLD", "APP_ENCRYPTION_KEY_VERSION"):
+    os.environ.pop(_name, None)  # tests always use the offline writer and the development key
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import httpx  # noqa: E402
+import psycopg  # noqa: E402
 import pytest  # noqa: E402
+from alembic import command  # noqa: E402
+from alembic.config import Config  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from demo_site.app import create_app as create_demo  # noqa: E402
-from seo_platform import net  # noqa: E402
+from seo_platform import clock, net  # noqa: E402
 from seo_platform.api import create_app  # noqa: E402
 from seo_platform.config import settings  # noqa: E402
 from seo_platform.db import Database  # noqa: E402
 
+BACKEND = Path(__file__).resolve().parents[1]
 STAFF = {"X-Role": "staff", "X-Actor": "staff:test"}
 CLIENT = {"X-Role": "client", "X-Actor": "client:owner"}
+
+
+def alembic_config() -> Config:
+    cfg = Config(str(BACKEND / "alembic.ini"))
+    cfg.set_main_option("script_location", str(BACKEND / "migrations"))
+    return cfg
+
+
+def pytest_sessionstart(session):
+    url = settings.database_owner_url.replace("postgresql+psycopg://", "postgresql://")
+    try:
+        psycopg.connect(url, connect_timeout=3).close()
+    except psycopg.OperationalError as exc:
+        pytest.exit(f"Postgres is not reachable ({exc}). Start Docker Desktop and run: docker compose up -d --wait", 2)
+    command.upgrade(alembic_config(), "head")
+
+
+@pytest.fixture()
+def db():
+    database = Database(settings.database_url)
+    database.wipe()
+    yield database
+    database.dispose()
+
+
+@pytest.fixture(autouse=True)
+def _real_time():
+    clock.reset()
+    yield
+    clock.reset()
+
+
+@pytest.fixture()
+def override():
+    """Temporarily change frozen settings: override(name=value, ...). Restored after the test."""
+    original = {}
+
+    def apply(**values):
+        for name, value in values.items():
+            original.setdefault(name, getattr(settings, name))
+            object.__setattr__(settings, name, value)
+
+    yield apply
+    for name, value in original.items():
+        object.__setattr__(settings, name, value)
 
 
 @pytest.fixture()
@@ -39,8 +93,8 @@ def demo():
 
 
 @pytest.fixture()
-def api(demo):
-    app = create_app(Database(":memory:"))
+def api(demo, db):
+    app = create_app(db)
     with TestClient(app) as client:
         yield client
 

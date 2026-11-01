@@ -110,7 +110,7 @@ def summary(repo: ClientRepo) -> dict[str, Any]:
         "changes": dict(status_counts), "waiting_on_client": status_counts["awaiting_client"],
         "visibility": vis["latest"], "spend_this_month_usd": round(repo.month_spend(), 4),
         "budget_usd": client["monthly_budget_usd"],
-        "alerts": repo.list("alerts", "acknowledged = 0", order="id DESC"),
+        "alerts": repo.list("alerts", "NOT acknowledged", order="id DESC"),
     }
 
 

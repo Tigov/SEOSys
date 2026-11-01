@@ -1,0 +1,34 @@
+# Local services for SEOSys. Start with:  docker compose up -d --wait
+#   Postgres : localhost:5432  (databases seosys and seosys_test)
+#   Mailpit  : SMTP localhost:1025, inbox http://localhost:8025
+# The app itself runs on the host (start.bat) so it is easy to debug.
+name: seosys
+
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: seosys_owner
+      POSTGRES_PASSWORD: ${POSTGRES_OWNER_PASSWORD:-seosys_owner_local}
+      POSTGRES_DB: seosys
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - seosys-pg:/var/lib/postgresql/data
+      - ./ops/postgres/init.sql:/docker-entrypoint-initdb.d/10-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U seosys_owner -d seosys"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  mail:
+    image: axllent/mailpit:v1.21
+    ports:
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
+    restart: unless-stopped
+
+volumes:
+  seosys-pg:
