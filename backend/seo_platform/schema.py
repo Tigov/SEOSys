@@ -163,7 +163,7 @@ login_attempts = Table(
     Column("kind", Text, nullable=False, server_default="login"),
     Column("ok", Boolean, nullable=False),
     Column("at", TZ, nullable=False, server_default=text("now()")),
-    _one_of("kind", ("login", "mfa", "reset", "verify")),
+    _one_of("kind", ("login", "mfa", "reset", "verify", "signup", "grader")),
     Index("ix_login_attempts_email_at", "email", "at"),
     Index("ix_login_attempts_ip_at", "ip", "at"),
 )

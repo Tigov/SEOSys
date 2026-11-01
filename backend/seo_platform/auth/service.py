@@ -73,6 +73,20 @@ def _take(db: Database, raw: str, purpose: str) -> dict[str, Any] | None:
                   "AND expires_at > ? RETURNING user_id", (clock.now(), tokens.digest(raw or ""), purpose, clock.now()))
 
 
+def ip_budget_left(db: Database, ip: str | None, kind: str, limit: int, window: timedelta = timedelta(hours=1)) -> bool:
+    """Count one more `kind` request from this IP. False once it has made `limit` of them within `window`."""
+    if ip is None:
+        return True  # no address to count by (tests and direct calls); in production the proxy always supplies one
+    if _recent(db, "ip = ? AND kind = ?", (ip, kind), window) >= limit:
+        return False
+    _attempt(db, "", ip, kind, True)
+    return True
+
+
+SIGNUPS_PER_IP_HOUR = 10
+CHECKS_PER_IP_HOUR = 5
+
+
 def email_budget_left(db: Database, email: str, kind: str) -> bool:
     if _recent(db, "email = ? AND kind = ?", (email, kind), timedelta(hours=1)) >= EMAILS_PER_HOUR:
         return False
@@ -82,7 +96,9 @@ def email_budget_left(db: Database, email: str, kind: str) -> bool:
 
 # ---------- sign-up and verification ----------
 
-def signup(db: Database, email: str, name: str, password: str) -> None:
+def signup(db: Database, email: str, name: str, password: str, ip: str | None = None) -> None:
+    if not ip_budget_left(db, ip, "signup", SIGNUPS_PER_IP_HOUR):
+        raise AuthError("Too many sign-ups from this network. Try again in an hour.", 429)
     email = normalise_email(email)
     name = (name or "").strip()[:120]
     if not name:

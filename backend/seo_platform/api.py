@@ -24,6 +24,7 @@ from .adapters.llm import get_writer
 from .adapters.site_wp import AdapterError, WordPressAdapter
 from .auth import google_signin, sessions, tokens
 from .auth import routes as auth_routes
+from .auth import service
 from .auth.service import AuthError, reactivate, suspend
 from .config import production_problems, settings
 from .middleware import configure_logging, harden
@@ -34,7 +35,7 @@ from .permissions import ACTIONS, CHANGE_ACTIONS, STATUS_ALLOWS, Access, require
 from .plans import PLANS
 
 log = logging.getLogger("seo_platform")
-HEAD_REVISION = "0003"  # the newest migration in backend/migrations/versions
+HEAD_REVISION = "0004"  # the newest migration in backend/migrations/versions
 STATIC_DIR = Path(__file__).with_name("static")
 UNSAFE = {"POST", "PUT", "PATCH", "DELETE"}
 CSRF_EXEMPT = {"/api/billing/webhook"}
@@ -258,7 +259,11 @@ def create_app(db: Database | None = None) -> FastAPI:
                 "status_allows": {k: (sorted(v) if v is not None else None) for k, v in STATUS_ALLOWS.items()}}
 
     @app.post("/api/grader")
-    async def grader(body: GradeIn, a: Access = Depends(require("public"))) -> dict[str, Any]:
+    async def grader(body: GradeIn, request: Request, a: Access = Depends(require("public"))) -> dict[str, Any]:
+        ip = auth_routes.client_ip(request)
+        if not a.principal or not a.principal.is_admin:
+            if not service.ip_budget_left(database, ip, "grader", service.CHECKS_PER_IP_HOUR):
+                raise HTTPException(429, "You've run a lot of checks. Try again in an hour.")
         return await services.grade(database, str(body.url).rstrip("/"), body.email, body.business_name, body.city,
                                     user_id=a.user_id)
 

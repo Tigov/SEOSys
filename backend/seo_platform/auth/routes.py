@@ -90,8 +90,8 @@ class ProfileIn(BaseModel):
 # ---------- routes ----------
 
 @router.post("/signup", status_code=202)
-def signup(body: SignupIn, db: Database = Depends(get_db)) -> dict[str, str]:
-    service.signup(db, body.email, body.name, body.password)
+def signup(body: SignupIn, request: Request, db: Database = Depends(get_db)) -> dict[str, str]:
+    service.signup(db, body.email, body.name, body.password, client_ip(request))
     return {"detail": "Check your email for a link to confirm your address, then log in."}
 
 
