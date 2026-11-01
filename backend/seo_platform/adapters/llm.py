@@ -1,6 +1,6 @@
 """LLM port and adapters (TDD section 7).
 
-`OfflineWriter` is deterministic and needs no API key, so the proof of concept
+`OfflineWriter` is deterministic and needs no API key, so the platform
 runs anywhere. `AnthropicWriter` is used when ANTHROPIC_API_KEY is set; any API
 error falls back to the offline writer so a vendor outage never blocks work.
 All outputs are drafts that a human reviews before anything reaches a site.
@@ -18,7 +18,7 @@ from ..net import make_client
 
 log = logging.getLogger(__name__)
 
-# Rough per-million-token prices used only for metering estimates in the PoC.
+# Rough per-million-token prices used only for metering estimates.
 EST_INPUT_USD_PER_M = 1.0
 EST_OUTPUT_USD_PER_M = 5.0
 

@@ -161,7 +161,7 @@ def test_demo_plugin_rejects_unsigned_replayed_and_bad_timestamp_requests(demo):
     from seo_platform.adapters.site_wp import sign
     from seo_platform.config import settings
 
-    path = "/wp-json/seo-poc/v1/update"
+    path = "/wp-json/seosys/v1/update"
     body = json.dumps({"path": "/", "field": "title", "value": "x"}).encode()
     assert _demo_post(demo, path, body, {}).status_code == 401
 
@@ -173,7 +173,7 @@ def test_demo_plugin_rejects_unsigned_replayed_and_bad_timestamp_requests(demo):
     assert _demo_post(demo, path, body, good).status_code == 200
     assert _demo_post(demo, path, body, good).status_code == 401          # replay
     assert _demo_post(demo, path, body, signed("nan", "n2")).status_code == 401
-    assert _demo_post(demo, path, body, signed(str(time.time()), "n3", "/wp-json/seo-poc/v1/robots")).status_code == 401
+    assert _demo_post(demo, path, body, signed(str(time.time()), "n3", "/wp-json/seosys/v1/robots")).status_code == 401
 
 
 def test_signing_secret_is_never_returned(audited):

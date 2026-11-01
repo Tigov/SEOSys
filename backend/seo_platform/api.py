@@ -25,7 +25,8 @@ from .adapters.site_wp import AdapterError, WordPressAdapter
 from .auth import google_signin, sessions, tokens
 from .auth import routes as auth_routes
 from .auth.service import AuthError, reactivate, suspend
-from .config import settings
+from .config import production_problems, settings
+from .middleware import configure_logging, harden
 from .db import ClientRepo, Database, now
 from .fixes import propose_for_finding
 from .net import BlockedHostError, make_client
@@ -33,6 +34,7 @@ from .permissions import ACTIONS, CHANGE_ACTIONS, STATUS_ALLOWS, Access, require
 from .plans import PLANS
 
 log = logging.getLogger("seo_platform")
+HEAD_REVISION = "0003"  # the newest migration in backend/migrations/versions
 STATIC_DIR = Path(__file__).with_name("static")
 UNSAFE = {"POST", "PUT", "PATCH", "DELETE"}
 CSRF_EXEMPT = {"/api/billing/webhook"}
@@ -149,6 +151,10 @@ def _set_state_cookie(response: Response, state: str) -> None:
 
 
 def create_app(db: Database | None = None) -> FastAPI:
+    if settings.is_production and (problems := production_problems(settings)):
+        raise RuntimeError("Refusing to start in production:\n- " + "\n- ".join(problems))
+    if not settings.is_test:
+        configure_logging()
     database = db or Database(settings.database_url)
 
     @asynccontextmanager
@@ -182,6 +188,8 @@ def create_app(db: Database | None = None) -> FastAPI:
             if has_body and not request.headers.get("content-type", "").startswith("application/json"):
                 return JSONResponse({"detail": "Send JSON."}, 415)
         return await call_next(request)
+
+    app.middleware("http")(harden)  # added last, so it wraps everything (including the CSRF check)
 
     # ---------- error mapping ----------
     @app.exception_handler(AuthError)
@@ -228,9 +236,21 @@ def create_app(db: Database | None = None) -> FastAPI:
         return WordPressAdapter(site["base_url"], site["adapter_secret"])
 
     # ---------- public ----------
-    @app.get("/api/health")
-    def health(a: Access = Depends(require("public"))) -> dict[str, Any]:
+    @app.get("/healthz")
+    def healthz(a: Access = Depends(require("public"))) -> dict[str, bool]:
+        """The process is up (for the load balancer)."""
         return {"ok": True}
+
+    @app.get("/readyz")
+    def readyz(a: Access = Depends(require("public"))) -> JSONResponse:
+        """The database answers and its schema is at the version this code expects."""
+        try:
+            row = database.one("SELECT version_num FROM alembic_version")
+        except Exception:
+            return JSONResponse({"ok": False, "database": "unreachable"}, 503)
+        current = row["version_num"] if row else None
+        ok = current == HEAD_REVISION
+        return JSONResponse({"ok": ok, "database": "ok", "schema": current, "expected": HEAD_REVISION}, 200 if ok else 503)
 
     @app.get("/api/auth/permissions")
     def permissions_table(a: Access = Depends(require("public"))) -> dict[str, Any]:

@@ -1,6 +1,6 @@
 """Demo client website: "Lone Star Comfort HVAC".
 
-Plays the role of a client's WordPress site in the proof of concept:
+Plays the role of a client's WordPress site during local development and tests:
 - Public pages that the platform crawls (seeded with real SEO problems).
 - A signed REST API that mimics the WordPress plugin the platform would install
   (FDD M10 / TDD section 9). Only signed requests can change content.
@@ -147,7 +147,7 @@ def create_app(state_path: Path | None = STATE_PATH, secret: str = SECRET) -> Fa
         return body
 
     # ---------- signed "plugin" API (what the platform's adapter calls) ----------
-    api = "/wp-json/seo-poc/v1"
+    api = "/wp-json/seosys/v1"
 
     @app.get(api + "/pages")
     async def list_pages(request: Request) -> JSONResponse:

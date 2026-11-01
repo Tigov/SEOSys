@@ -147,5 +147,5 @@ td,th{{border-bottom:1px solid #e3e6ea;padding:7px 8px;text-align:left;font-size
 <h2>Waiting for your approval</h2><p>{_count(len(waiting), "change")} waiting in the portal. Nothing changes on your site until you approve.</p>
 <h2>Open issues, most important first</h2><table><tr><th>Severity</th><th>Issue</th><th>Recommended fix</th></tr>{rows_open}</table>
 <h2>AI visibility by engine</h2><table><tr><th>Engine</th><th>Mention rate</th></tr>{engines}</table>
-<p class="note">AI-visibility figures in this proof of concept come from <b>simulated</b> engines. Rankings and AI answers change over time, and no one can guarantee placement.</p>
+<p class="note">AI-visibility figures currently come from <b>simulated</b> engines. Rankings and AI answers change over time, and no one can guarantee placement.</p>
 </body></html>"""

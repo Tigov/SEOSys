@@ -1,4 +1,4 @@
-# What this proof of concept covers from the FDD
+# What SEOSys covers from the FDD
 
 | FDD module | Requirement IDs exercised | Where |
 | --- | --- | --- |
@@ -11,4 +11,4 @@
 | M14 Operations | FR-14.4 (metering and budget cap), FR-14.5 (audit log) | `usage_events`, Activity tab |
 | Business rules | BR-1, BR-3 (policy linter), BR-4/BR-6 (client approval, no overlays), BR-9 (tenant isolation) | `policy.py`, `changes.py`, `db.ClientRepo` |
 
-Not in the PoC (next steps): M2 CRM and M3 contracts/billing, OAuth to Google Search Console/GA4/GBP (M4, M7), content workflow (M8), review management (M12), link reclamation (M13), Shopify and GitHub adapters, real AI engines, real auth.
+Not built yet (next steps): M2 CRM and M3 contracts/billing, OAuth to Google Search Console/GA4/GBP (M4, M7), content workflow (M8), review management (M12), link reclamation (M13), Shopify and GitHub adapters, real AI engines, real auth.

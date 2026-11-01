@@ -85,4 +85,24 @@ class Settings:
         return self.app_env == "test"
 
 
+def production_problems(s: Settings) -> list[str]:
+    """Why these settings aren't safe to run in production. Empty means they are."""
+    problems = []
+    if s.database_url == DEV_DATABASE_URL or "seosys_app_local" in s.database_url:
+        problems.append("DATABASE_URL still uses the local development database and password.")
+    if s.encryption_key == DEV_ENCRYPTION_KEY:
+        problems.append("APP_ENCRYPTION_KEY is the development key. Generate a new one.")
+    if not s.app_base_url.startswith("https://"):
+        problems.append("APP_BASE_URL must start with https://.")
+    if s.allow_private_hosts:
+        problems.append("ALLOW_PRIVATE_HOSTS must be false, so the crawler can't be pointed at internal addresses.")
+    if s.demo_site_secret == DEV_DEMO_SITE_SECRET:
+        problems.append("DEMO_SITE_SECRET is the development value.")
+    if s.smtp_host in ("localhost", "127.0.0.1") or not s.smtp_tls:
+        problems.append("SMTP_HOST must be a real email service with SMTP_TLS=true.")
+    if not s.stripe_secret_key.startswith("sk_live_") or not s.stripe_webhook_secret:
+        problems.append("STRIPE_SECRET_KEY must be a live key (sk_live_...) and STRIPE_WEBHOOK_SECRET must be set.")
+    return problems
+
+
 settings = Settings()

@@ -1,6 +1,6 @@
 # Contributing
 
-This repo is a proof of concept of the SEO platform described in [docs/functional-design.md](docs/functional-design.md) and [docs/technical-design.md](docs/technical-design.md). Read README.md first.
+This repo is SEOSys, the SEO platform described in [docs/functional-design.md](docs/functional-design.md) and [docs/technical-design.md](docs/technical-design.md). Read README.md first.
 
 ## Rule 0: check the code-review graph every time you look through the code
 

@@ -1,6 +1,6 @@
 """AI-search visibility tracking (FDD M9).
 
-The PoC uses SIMULATED engines so it runs offline and costs nothing. They sit
+Until the real AI-engine adapters land, this uses SIMULATED engines so it runs offline and costs nothing. They sit
 behind the same `AIEngine` interface a real adapter would implement (OpenAI,
 Gemini, Perplexity Sonar, Claude with web search, or DataForSEO for Google AI
 Overviews). The simulation is deterministic and reacts to real site signals

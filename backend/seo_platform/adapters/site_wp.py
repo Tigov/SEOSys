@@ -1,7 +1,7 @@
 """WordPress-style deployment adapter (FDD FR-10.4, TDD section 9).
 
-Talks to the companion plugin's REST API with HMAC-signed requests. In the PoC
-the "plugin" is the demo site's /wp-json/seo-poc/v1 API. The same interface
+Talks to the companion plugin's REST API with HMAC-signed requests. Locally
+the "plugin" is the demo site's /wp-json/seosys/v1 API. The same interface
 (`apply`, `revert`, `current_value`) would be implemented by the Shopify app
 and the GitHub App adapters.
 """
@@ -17,7 +17,7 @@ import httpx
 
 from ..net import make_client
 
-API_PREFIX = "/wp-json/seo-poc/v1"
+API_PREFIX = "/wp-json/seosys/v1"
 
 
 def sign(secret: str, timestamp: str, nonce: str, method: str, path: str, body: bytes) -> str:

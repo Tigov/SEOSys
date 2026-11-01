@@ -1,8 +1,8 @@
 {
-  "name": "seo-platform-portal",
+  "name": "seosys-portal",
   "private": true,
-  "version": "0.1.0",
-  "description": "Client portal and staff console for the SEO platform proof of concept",
+  "version": "1.0.0",
+  "description": "SEOSys public website, client portal and agency console",
   "type": "module",
   "scripts": {
     "build": "node build.mjs",

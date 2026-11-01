@@ -21,7 +21,7 @@ export function Visibility({ clientId, clientName, refresh }: { clientId: number
   return (
     <div className="stack">
       <div className="notice">
-        <strong>Simulated engines.</strong> This proof of concept imitates ChatGPT, Gemini, Perplexity and Google AI Overviews
+        <strong>Simulated engines.</strong> For now SEOSys imitates ChatGPT, Gemini, Perplexity and Google AI Overviews
         so it runs offline and free. The simulation reacts to real signals from the site, such as schema, AI-crawler access and
         page descriptions. Real engines plug into the same interface later.
       </div>
