@@ -73,7 +73,7 @@ def _take(db: Database, raw: str, purpose: str) -> dict[str, Any] | None:
                   "AND expires_at > ? RETURNING user_id", (clock.now(), tokens.digest(raw or ""), purpose, clock.now()))
 
 
-def _email_budget_left(db: Database, email: str, kind: str) -> bool:
+def email_budget_left(db: Database, email: str, kind: str) -> bool:
     if _recent(db, "email = ? AND kind = ?", (email, kind), timedelta(hours=1)) >= EMAILS_PER_HOUR:
         return False
     _attempt(db, email, None, kind, True)
@@ -92,7 +92,7 @@ def signup(db: Database, email: str, name: str, password: str) -> None:
     existing = user_by_email(db, email)
     if existing:
         passwords.hash(password)  # same work as a real sign-up, so timing doesn't reveal the account
-        if _email_budget_left(db, email, "verify"):
+        if email_budget_left(db, email, "verify"):
             mailer.queue(db, email, "already_registered", name=existing["name"], url=f"{settings.app_base_url}/#/login")
         return
     with db.transaction():
@@ -114,7 +114,7 @@ def verify_email(db: Database, raw: str) -> None:
 
 
 def resend_verification(db: Database, principal: sessions.Principal) -> None:
-    if principal.email_verified or not _email_budget_left(db, principal.email, "verify"):
+    if principal.email_verified or not email_budget_left(db, principal.email, "verify"):
         return
     mailer.queue(db, principal.email, "verify", name=principal.name,
                  url=link("verify", _issue(db, principal.user_id, "verify", VERIFY_TTL)))
@@ -167,7 +167,7 @@ def forgot_password(db: Database, email: str) -> None:
     except AuthError:
         return
     user = user_by_email(db, email)
-    if user is None or user["status"] != "active" or not _email_budget_left(db, email, "reset"):
+    if user is None or user["status"] != "active" or not email_budget_left(db, email, "reset"):
         return
     mailer.queue(db, email, "reset", name=user["name"], url=link("reset", _issue(db, user["id"], "reset", RESET_TTL)))
 

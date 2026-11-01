@@ -1,9 +1,12 @@
 """Google connector (TDD section 4): OAuth sign-in, Search Console, GA4 and PageSpeed Insights.
 
 The client signs in with their own Google account and grants read-only scopes; no passwords
-(FR-4.2). Tokens stay server-side in the `connections` table and are never returned by the API.
-Production envelope-encrypts them (TDD section 10); the PoC keeps them in the local SQLite file,
-which lives outside OneDrive. PageSpeed Insights uses the agency's API key, not the client's account.
+(FR-4.2). Tokens stay server-side in the `connections` table, encrypted at rest, and are never
+returned by the API. PageSpeed Insights uses the agency's API key, not the client's account.
+
+The same OAuth client also powers "Sign in with Google" (scopes openid, email, profile only).
+Every handshake's one-time state is also set in a short-lived browser cookie and checked on return,
+so a sign-in link can't be replayed in someone else's browser.
 """
 from __future__ import annotations
 
@@ -34,6 +37,8 @@ GA4_ADMIN_API = "https://analyticsadmin.googleapis.com/v1beta"
 GA4_DATA_API = "https://analyticsdata.googleapis.com/v1beta"
 PSI_API = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed"
 
+SIGNIN_SCOPES = ("openid", "email", "profile")
+STATE_COOKIE = "seosys_oauth"
 SCOPES = ("openid", "email",
           "https://www.googleapis.com/auth/webmasters.readonly",
           "https://www.googleapis.com/auth/analytics.readonly")
@@ -85,31 +90,61 @@ async def _send(method: str, url: str, *, timeout: float = 30, **kwargs: Any) ->
 
 # ---------- connect flow ----------
 
-def start_connect(db: Database, client_id: int, actor: str) -> str:
-    """Create a one-time sign-in handshake and return the Google consent page URL."""
+def _start(db: Database, purpose: str, scopes: tuple[str, ...], client_id: int | None, actor: str,
+           **extra: str) -> tuple[str, str]:
+    """Create a one-time handshake. Returns (consent page URL, state for the browser cookie)."""
     _require_oauth_config()
-    db.for_client(client_id)  # 404 for an unknown client
     state, verifier = secrets.token_urlsafe(32), secrets.token_urlsafe(64)
-    db.save_oauth_state(state=state, client_id=client_id, provider="google", actor=actor, code_verifier=verifier)
+    db.save_oauth_state(state=state, purpose=purpose, client_id=client_id, provider="google", actor=actor,
+                        code_verifier=verifier)
     params = {
         "client_id": settings.google_client_id, "redirect_uri": settings.google_redirect_uri,
-        "response_type": "code", "scope": " ".join(SCOPES), "access_type": "offline", "prompt": "consent",
-        "include_granted_scopes": "true", "state": state,
-        "code_challenge": _b64url(hashlib.sha256(verifier.encode()).digest()), "code_challenge_method": "S256",
+        "response_type": "code", "scope": " ".join(scopes), "state": state,
+        "code_challenge": _b64url(hashlib.sha256(verifier.encode()).digest()), "code_challenge_method": "S256", **extra,
     }
-    return f"{AUTH_URL}?{urlencode(params)}"
+    return f"{AUTH_URL}?{urlencode(params)}", state
 
 
-def _email_from_id_token(id_token: str | None) -> str:
+def start_connect(db: Database, client_id: int, actor: str) -> tuple[str, str]:
+    """Consent page URL for connecting Search Console and Analytics to a client, and its state."""
+    db.for_client(client_id)  # 404 for an unknown client
+    return _start(db, "connect", SCOPES, client_id, actor, access_type="offline", prompt="consent",
+                  include_granted_scopes="true")
+
+
+def start_signin(db: Database) -> tuple[str, str]:
+    """Consent page URL for "Sign in with Google", and its state."""
+    return _start(db, "signin", SIGNIN_SCOPES, None, "", prompt="select_account")
+
+
+def take_state(db: Database, state: str, browser_state: str | None) -> dict[str, Any]:
+    """Use a handshake once. It must also match the state cookie set in the browser that started it."""
+    pending = db.take_oauth_state(state, STATE_TTL_SECONDS) if state else None
+    if pending is None or not browser_state or not secrets.compare_digest(browser_state, state):
+        raise GoogleError("This Google sign-in link has expired or was already used. Start again.", 400)
+    return pending
+
+
+def id_token_claims(id_token: str | None) -> dict[str, Any]:
     # The ID token comes straight from Google's token endpoint over TLS, so its payload is read without
     # checking the signature (Google's guidance for tokens received this way).
     if not id_token or id_token.count(".") != 2:
-        return ""
+        return {}
     payload = id_token.split(".")[1]
     try:
-        return str(json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4))).get("email", ""))
+        claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
     except ValueError:
-        return ""
+        return {}
+    return claims if isinstance(claims, dict) else {}
+
+
+def _email_from_id_token(id_token: str | None) -> str:
+    return str(id_token_claims(id_token).get("email", ""))
+
+
+async def exchange_code(pending: dict[str, Any], code: str) -> httpx.Response:
+    return await _token_request({"grant_type": "authorization_code", "code": code,
+                                 "code_verifier": pending["code_verifier"], "redirect_uri": settings.google_redirect_uri})
 
 
 def _expiry(tokens: dict[str, Any]) -> str:
@@ -127,18 +162,14 @@ def _connection(repo: ClientRepo) -> dict[str, Any] | None:
     return rows[0] if rows else None
 
 
-async def finish_connect(db: Database, state: str, code: str | None, error: str | None) -> tuple[int, str]:
+async def finish_connect(db: Database, pending: dict[str, Any], code: str | None, error: str | None) -> tuple[int, str]:
     """Handle Google's redirect back. Returns (client_id, outcome) where outcome is connected, declined or failed."""
-    pending = db.take_oauth_state(state, STATE_TTL_SECONDS) if state else None
-    if pending is None:
-        raise GoogleError("This Google sign-in link has expired or was already used. Start again from the portal.", 400)
     client_id, actor = int(pending["client_id"]), pending["actor"]
     repo = db.for_client(client_id)
     if error or not code:
         repo.log(actor, "google.declined", f"client:{client_id}", {"reason": error or "no code"})
         return client_id, "declined"
-    resp = await _token_request({"grant_type": "authorization_code", "code": code,
-                                 "code_verifier": pending["code_verifier"], "redirect_uri": settings.google_redirect_uri})
+    resp = await exchange_code(pending, code)
     if resp.status_code != 200:
         repo.log(actor, "google.connect_failed", f"client:{client_id}", {"reason": _google_message(resp)})
         return client_id, "failed"

@@ -1,4 +1,5 @@
 INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
 INFO  [alembic.runtime.migration] Will assume transactional DDL.
-........................................................................ [ 57%]
-.....................................................                    [100%]
+INFO  [alembic.runtime.migration] Running upgrade  -> 0001, Initial schema: accounts, billing and client work.
+........................................................................ [ 53%]
+..............................................................           [100%]

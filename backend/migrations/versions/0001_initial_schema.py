@@ -144,6 +144,7 @@ def upgrade() -> None:
     sa.Column('token_hash', sa.Text(), nullable=False),
     sa.Column('user_id', sa.BigInteger(), nullable=False),
     sa.Column('purpose', sa.Text(), nullable=False),
+    sa.Column('detail', postgresql.JSONB(astext_type=sa.Text()), server_default=sa.text("'{}'::jsonb"), nullable=False),
     sa.Column('expires_at', postgresql.TIMESTAMP(timezone=True), nullable=False),
     sa.Column('used_at', postgresql.TIMESTAMP(timezone=True), nullable=True),
     sa.Column('created_at', postgresql.TIMESTAMP(timezone=True), server_default=sa.text('now()'), nullable=False),

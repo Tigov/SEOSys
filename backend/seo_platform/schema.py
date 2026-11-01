@@ -124,6 +124,7 @@ email_tokens = Table(
     Column("token_hash", Text, primary_key=True),
     _fk("user_id", "users.id", "CASCADE"),
     Column("purpose", Text, nullable=False),
+    _json("detail", "{}"),
     Column("expires_at", TZ, nullable=False, index=True),
     Column("used_at", TZ),
     _created(),

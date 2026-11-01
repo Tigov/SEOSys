@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, AsyncIterator, Literal
 
 import httpx
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field, HttpUrl
 from . import changes as change_svc
 from . import services, visibility
 from .adapters import google
+from .auth import google_signin, sessions, tokens
 from .auth import routes as auth_routes
 from .auth.service import AuthError
 from . import mailer
@@ -110,6 +111,11 @@ async def _send_mail_forever(database: Database) -> None:
         except Exception:  # keep the loop alive; the row records what went wrong
             log.exception("sending queued email failed")
         await asyncio.sleep(5)
+
+
+def _set_state_cookie(response: Response, state: str) -> None:
+    response.set_cookie(google.STATE_COOKIE, state, max_age=google.STATE_TTL_SECONDS, httponly=True, samesite="lax",
+                        path="/api/", secure=settings.is_production or settings.app_base_url.startswith("https://"))
 
 
 def create_app(db: Database | None = None) -> FastAPI:
@@ -339,14 +345,46 @@ def create_app(db: Database | None = None) -> FastAPI:
         return google.status(repo_for(client_id))
 
     @app.post("/api/clients/{client_id}/connections/google/start")
-    def google_start(client_id: int, c: Caller = Depends(caller)) -> dict[str, str]:
-        return {"auth_url": google.start_connect(database, client_id, c.actor)}
+    def google_start(client_id: int, response: Response, c: Caller = Depends(caller)) -> dict[str, str]:
+        url, state = google.start_connect(database, client_id, c.actor)
+        _set_state_cookie(response, state)
+        return {"auth_url": url}
+
+    @app.get("/api/auth/google/start")
+    def google_signin_start() -> RedirectResponse:
+        url, state = google.start_signin(database)
+        response = RedirectResponse(url, status_code=303)
+        _set_state_cookie(response, state)
+        return response
+
+    @app.post("/api/auth/google/link")
+    def google_link(body: auth_routes.TokenIn) -> dict[str, str]:
+        google_signin.confirm_link(database, body.token)
+        return {"detail": "Google sign-in is now linked to your account."}
 
     @app.get("/api/oauth/google/callback")
-    async def google_callback(state: str = "", code: str | None = None, error: str | None = None) -> RedirectResponse:
-        # Google redirects the browser here, so there are no role headers; the one-time state identifies the request.
-        client_id, outcome = await google.finish_connect(database, state, code, error)
-        return RedirectResponse(f"/?google={outcome}#/clients/{client_id}/google", status_code=303)
+    async def google_callback(request: Request, state: str = "", code: str | None = None,
+                              error: str | None = None) -> RedirectResponse:
+        # Google redirects the browser here. The one-time state, matched against the cookie set when this browser
+        # started, identifies the request.
+        pending = google.take_state(database, state, request.cookies.get(google.STATE_COOKIE))
+        if pending["purpose"] == "signin":
+            outcome, raw = await google_signin.finish_signin(database, pending, code, error,
+                                                             auth_routes.client_ip(request), auth_routes.user_agent(request))
+            target = {"signed_in": "/?signin=ok#/", "mfa": "/?signin=mfa#/login"}.get(outcome, f"/?signin={outcome}#/login")
+            response = RedirectResponse(target, status_code=303)
+            if raw:
+                old = auth_routes.current_principal(request)
+                if old:
+                    sessions.end(database, old.session_hash)
+                user = database.one("SELECT u.is_admin FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id_hash = ?",
+                                    (tokens.digest(raw),))
+                response.set_cookie(value=raw, **sessions.cookie_args(bool(user and user["is_admin"])))
+        else:
+            client_id, outcome = await google.finish_connect(database, pending, code, error)
+            response = RedirectResponse(f"/?google={outcome}#/clients/{client_id}/google", status_code=303)
+        response.delete_cookie(google.STATE_COOKIE, path="/api/")
+        return response
 
     @app.get("/api/clients/{client_id}/connections/google/properties")
     async def google_properties(client_id: int, c: Caller = Depends(caller)) -> dict[str, Any]:
