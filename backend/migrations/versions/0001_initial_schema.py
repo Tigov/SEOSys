@@ -45,13 +45,14 @@ def upgrade() -> None:
     sa.Column('context', postgresql.JSONB(astext_type=sa.Text()), server_default=sa.text("'{}'::jsonb"), nullable=False),
     sa.Column('status', sa.Text(), server_default='pending', nullable=False),
     sa.Column('attempts', sa.Integer(), server_default=sa.text('0'), nullable=False),
+    sa.Column('next_attempt_at', postgresql.TIMESTAMP(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('last_error', sa.Text(), nullable=True),
     sa.Column('created_at', postgresql.TIMESTAMP(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('sent_at', postgresql.TIMESTAMP(timezone=True), nullable=True),
     sa.CheckConstraint("status IN ('pending', 'sent', 'failed')", name=op.f('ck_email_outbox_status')),
     sa.PrimaryKeyConstraint('id', name=op.f('pk_email_outbox'))
     )
-    op.create_index('ix_email_outbox_pending', 'email_outbox', ['id'], unique=False, postgresql_where=sa.text("status = 'pending'"))
+    op.create_index('ix_email_outbox_pending', 'email_outbox', ['next_attempt_at'], unique=False, postgresql_where=sa.text("status = 'pending'"))
     op.create_table('login_attempts',
     sa.Column('id', sa.BigInteger(), sa.Identity(always=True), nullable=False),
     sa.Column('ip', postgresql.INET(), nullable=True),

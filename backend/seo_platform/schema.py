@@ -176,11 +176,12 @@ email_outbox = Table(
     _json("context", "{}"),
     Column("status", Text, nullable=False, server_default="pending"),
     Column("attempts", Integer, nullable=False, server_default=text("0")),
+    Column("next_attempt_at", TZ, nullable=False, server_default=text("now()")),
     Column("last_error", Text),
     _created(),
     Column("sent_at", TZ),
     _one_of("status", ("pending", "sent", "failed")),
-    Index("ix_email_outbox_pending", "id", postgresql_where=text("status = 'pending'")),
+    Index("ix_email_outbox_pending", "next_attempt_at", postgresql_where=text("status = 'pending'")),
 )
 
 # ---------- billing ----------
