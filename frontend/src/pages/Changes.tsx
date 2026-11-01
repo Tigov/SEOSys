@@ -1,4 +1,4 @@
-import { api, getRole, post, type Change } from "../api";
+import { api, can, getRole, post, type Change } from "../api";
 import { SerpBeforeAfter } from "../components/SerpPreview";
 import { ActionButton, Empty, ErrorNote, RiskTag, StatusPill, fmtDate, useLoad, useToast } from "../components/ui";
 import { actorName, checkName, plural } from "../labels";
@@ -70,7 +70,7 @@ export function Changes({ clientId, siteUrl, refresh }: { clientId: number; site
     <div className="stack">
       <div className="toolbar">
         {role === "staff" && count("draft") > 0 && <ActionButton onRun={() => bulk("submit")}>Send {plural(count("draft"), "draft")} for approval</ActionButton>}
-        {role === "client" && count("awaiting_client") > 0 && (
+        {can("change.approve") && count("awaiting_client") > 0 && (
           <>
             <ActionButton onRun={() => bulk("approve")}>Approve all {count("awaiting_client")}</ActionButton>
             <ActionButton variant="secondary" onRun={() => bulk("approve", "low")}>Approve low-risk only</ActionButton>
@@ -142,14 +142,14 @@ export function Changes({ clientId, siteUrl, refresh }: { clientId: number; site
                       {role === "staff" && c.status === "draft" && <ActionButton onRun={() => act(c, "submit", "sent for approval")}>Send for approval</ActionButton>}
                       {role === "staff" && ["draft", "blocked_policy", "awaiting_client", "rejected"].includes(c.status) &&
                         <ActionButton variant="quiet" onRun={() => act(c, "discard", "discarded")}>Discard</ActionButton>}
-                      {role === "client" && c.status === "awaiting_client" && (
+                      {can("change.approve") && c.status === "awaiting_client" && (
                         <>
                           <ActionButton onRun={() => act(c, "approve", "approved")}>Approve</ActionButton>
                           <ActionButton variant="secondary" onRun={() => act(c, "reject", "rejected")}>Reject</ActionButton>
                         </>
                       )}
                       {role === "staff" && c.status === "approved" && <ActionButton onRun={() => act(c, "deploy", "deployed and verified")}>Deploy</ActionButton>}
-                      {c.status === "live" && <ActionButton variant="danger" onRun={() => act(c, "rollback", "rolled back")}>Roll back</ActionButton>}
+                      {c.status === "live" && can("change.rollback") && <ActionButton variant="danger" onRun={() => act(c, "rollback", "rolled back")}>Roll back</ActionButton>}
                     </span>
                   </footer>
                 </article>

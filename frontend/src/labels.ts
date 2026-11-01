@@ -1,12 +1,16 @@
 // Turns internal identifiers into the words people see. Keep every user-facing name here so it stays consistent.
 
+// Actors are logged as "<role>:<name>", e.g. "admin:Viktor" or "owner:Sam Smith".
 export function actorName(actor: string | null | undefined): string {
   if (!actor) return "System";
   if (actor.startsWith("auto")) return "Auto-approved (client setting)";
-  const [role] = actor.split(":");
-  if (role === "staff") return "Strategist";
+  const [role, ...rest] = actor.split(":");
+  const name = rest.join(":");
+  if (role === "admin") return name ? `${name} (SEOSys)` : "SEOSys";
+  if (["owner", "member", "approver"].includes(role)) return name || "Client";
+  if (role === "staff") return "SEOSys";
   if (role === "client") return "Client owner";
-  if (role === "system") return "System";
+  if (role === "system" || role === "stripe" || role === "grader") return role === "stripe" ? "Payments" : "System";
   return sentence(actor);
 }
 
@@ -35,6 +39,18 @@ const ACTIONS: Record<string, string> = {
   "google.expired": "Google connection expired",
   "google.disconnected": "Google disconnected",
   "google.properties_selected": "Google properties chosen",
+  "site.updated": "Website details changed",
+  "team.invited": "Person invited", "team.invite_cancelled": "Invitation cancelled", "team.joined": "Joined the team",
+  "team.updated": "Approval rights changed", "team.removed": "Removed from the team",
+  "team.ownership_transferred": "Ownership transferred",
+  "billing.checkout_started": "Started checkout", "billing.purchased": "Package bought",
+  "billing.status_changed": "Account status changed", "billing.activated_manually": "Marked active by SEOSys",
+  "user.signed_up": "Account created", "user.email_verified": "Email confirmed", "user.logged_in": "Logged in",
+  "user.password_reset": "Password reset", "user.password_changed": "Password changed",
+  "user.mfa_enabled": "Two-step login turned on", "user.mfa_disabled": "Two-step login turned off",
+  "user.recovery_code_used": "Recovery code used", "user.recovery_codes_regenerated": "New recovery codes made",
+  "user.google_linked": "Google sign-in linked", "user.suspended": "Account suspended", "user.reactivated": "Account reactivated",
+  "client.closed": "Account closed", "client.deleted": "Account data deleted",
 };
 
 // What the owner sees after Google sends them back to the portal (?google=<outcome>).
@@ -171,3 +187,225 @@ export function sentence(text: string): string {
 }
 
 export const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+// ---------- public website ----------
+type Section = { heading?: string; body: string[] };
+
+export const SITE = {
+  menu: "Menu",
+  promise: "You own everything. Every change is logged and can be undone.",
+  nav: {
+    how: "How it works", packages: "Packages", check: "Free website check", about: "About", contact: "Contact",
+    privacy: "Privacy", terms: "Terms", login: "Log in", signup: "Create account", logout: "Log out",
+    dashboard: "Dashboard", account: "Your account",
+  },
+  severity: { critical: "Urgent", high: "Important", medium: "Worth fixing", low: "Minor" } as Record<string, string>,
+  check: {
+    label: "Your website address",
+    button: "Check my website",
+    busy: "Checking…",
+    note: "Free. We read up to 15 pages and change nothing.",
+    failed: "We couldn't check that website. Check the address and try again.",
+    scoreTitle: "Your website's health",
+    checked: (pages: number, host: string) => `${plural(pages, "page")} checked on ${host}`,
+    next: "See how we fix this",
+    pageTitle: "Free website check",
+    pageLede: "Find out what's stopping customers from finding you on Google and in AI assistants like ChatGPT. It takes about a minute.",
+  },
+  home: {
+    title: "We find what's holding your website back, and fix it with your OK.",
+    lede: "SEOSys checks your website the way a good inspector checks a house, then fixes the problems for you each month. Nothing changes until you approve it.",
+    sampleLabel: "Example of a website check",
+    sampleTitle: "Example report",
+    sampleMeta: "12 pages checked on a plumber's website",
+    monthTitle: "What happens every month",
+    steps: [
+      { title: "We check your website", text: "A full inspection of every page: speed, titles, broken links, and how often AI assistants recommend you." },
+      { title: "We prepare the fixes", text: "Each fix shows what it changes, why, and how risky it is, in plain English." },
+      { title: "You approve them", text: "Approve or reject each one from your dashboard. You can let small, safe fixes go ahead on their own." },
+      { title: "We make the change and check it worked", text: "If anything looks wrong afterwards, the change is undone automatically." },
+    ],
+    promiseTitle: "Our promise",
+    promises: [
+      "Your website, accounts and content stay yours.",
+      "Every change is recorded, and any change can be undone.",
+      "We report on calls, leads and mentions in AI answers, not just rankings.",
+      "We never promise a spot on Google, because nobody honestly can.",
+    ],
+  },
+  packages: {
+    title: "Packages",
+    lede: "Pick the help you need. Monthly packages run for three months at first, then month to month with 30 days' notice.",
+    choose: (name: string) => `Choose ${name}`,
+    talk: "Talk to us",
+    alreadyClient: "You already have a package. Manage it from your dashboard.",
+    verifyFirst: "Confirm your email address first. Check your inbox for the link we sent.",
+    terms: "Prices are before tax. You can cancel a monthly package at any time from your dashboard.",
+    dialogTitle: (name: string) => `Start the ${name} package`,
+    business: "Your business name",
+    stripeNote: "Next you'll go to Stripe, our payment provider, to pay securely. We never see your card details.",
+    continue: "Continue to payment",
+    cancel: "Cancel",
+  },
+  welcome: {
+    title: "Thanks, you're all set",
+    lede: "Your dashboard is ready. Add your website and connect Google so we can start your first check.",
+    waiting: "We're setting up your account. This usually takes a few seconds.",
+    button: "Open your dashboard",
+  },
+  pages: {
+    how: { title: "How it works", sections: [
+      { body: ["SEOSys is an SEO service for local businesses, run by real people and backed by software that does the checking for us."] },
+      { heading: "1. Start with a free check", body: ["Enter your website address and see your biggest problems in about a minute. No account needed."] },
+      { heading: "2. Pick a package", body: ["Create an account, choose a package and pay securely through Stripe. Your dashboard opens straight away."] },
+      { heading: "3. Connect your website and Google", body: ["Install our small WordPress plugin, or give us access another way, and connect Google Search Console and Analytics with a few clicks. We only ask to read your Google data, never to change it."] },
+      { heading: "4. Approve, and watch it improve", body: ["Each month we send fixes for your approval, make the ones you approve, and check that each one worked. Your report shows what changed and what it did for you."] },
+    ] as Section[] },
+    about: { title: "About SEOSys", sections: [
+      { body: ["We help local businesses get found: on Google, on maps, and in the answers AI assistants give when someone asks for a recommendation."] },
+      { body: ["Most SEO agencies sell hours and send long reports. We'd rather fix things. Our software does the inspecting, so our time goes into the changes that matter, and you approve every one."] },
+    ] as Section[] },
+    contact: { title: "Contact", sections: [
+      { body: ["Questions about a package, an invoice or your account? Email us and a person will reply within one working day."] },
+      { body: ["hello@seosys.local"] },
+    ] as Section[] },
+    privacy: { title: "Privacy policy", sections: [
+      { body: ["Working draft. This page needs review by a lawyer before SEOSys takes real customers."] },
+      { heading: "What we collect", body: ["Your name, email address and business details; the pages of your website that we check; and, if you connect Google, read-only reports from Search Console and Analytics."] },
+      { heading: "How we use it", body: ["Only to run the service you pay for: checking your website, preparing and making changes you approve, and reporting results. We don't sell your data."] },
+      { heading: "Who else sees it", body: ["Stripe handles payments, and our email provider sends account emails. Neither gets more than it needs."] },
+      { heading: "How we protect it", body: ["Passwords are never stored, only a secure fingerprint of them. Access to Google and your website is encrypted, and every sign-in and change is logged."] },
+      { heading: "Your choices", body: ["You can download all your data or ask us to delete it at any time. When you cancel, your account stays readable for 30 days, closes, and is deleted 30 days after that."] },
+    ] as Section[] },
+    terms: { title: "Terms of service", sections: [
+      { body: ["Working draft. This page needs review by a lawyer before SEOSys takes real customers."] },
+      { heading: "The service", body: ["We check your website, suggest changes, and make the changes you approve. We don't guarantee any ranking, because no one can."] },
+      { heading: "Payment and cancelling", body: ["Monthly packages run for an initial three months, then month to month. Cancel with 30 days' notice from your dashboard."] },
+      { heading: "Your content", body: ["Everything we make for you is yours. You can export it whenever you like."] },
+    ] as Section[] },
+  },
+};
+
+// ---------- accounts ----------
+export const ACCOUNT = {
+  or: "or",
+  working: "One moment…",
+  fields: {
+    name: "Your name", email: "Email address", password: "Password",
+    passwordHint: "At least 12 characters. A short sentence you'll remember works well.",
+  },
+  signup: {
+    title: "Create account", lede: "Run free checks, save your results and choose a package when you're ready.",
+    button: "Create account", haveAccount: "Already have an account?", sentTitle: "Check your email",
+    agree: "By creating an account you agree to the", terms: "terms", and: "and", privacy: "privacy policy",
+  },
+  login: {
+    title: "Log in", button: "Log in", noAccount: "New to SEOSys?", forgot: "Forgot your password?",
+  },
+  google: {
+    signup: "Sign up with Google", login: "Log in with Google", linkTitle: "Google sign-in",
+    outcomes: {
+      declined: "Google sign-in was cancelled.",
+      failed: "Google didn't confirm that email address, so we couldn't sign you in. Try another way.",
+      link_sent: "You already have an account with that email. We've emailed you a link to allow Google sign-in.",
+      mfa: "Enter the code from your authenticator app to finish logging in.",
+    } as Record<string, string>,
+  },
+  mfa: {
+    checkTitle: "Two-step login", checkLede: "Enter the 6-digit code from your authenticator app.",
+    recoveryLede: "Enter one of the recovery codes you saved when you turned on two-step login.",
+    codeLabel: "6-digit code", recoveryLabel: "Recovery code", verify: "Continue",
+    useRecovery: "Use a recovery code instead", useApp: "Use my authenticator app instead", notYou: "Log out",
+    setupTitle: "Turn on two-step login",
+    setupLede: "Each time you log in, you'll also enter a code from an app on your phone, so a stolen password isn't enough.",
+    requiredLede: "Your account needs two-step login before you can continue. It takes about a minute.",
+    begin: "Start", step1: "Open an authenticator app on your phone, such as Google Authenticator, Microsoft Authenticator or 1Password.",
+    step2: "Add an account and type in this setup key:", openApp: "On this phone? Open it in your app", step3: "Enter the 6-digit code the app shows.",
+    turnOn: "Turn on two-step login", codesTitle: "Save your recovery codes",
+    codesLede: "If you lose your phone, each of these codes lets you log in once. Store them somewhere safe. You won't see them again.",
+    saved: "I've saved them",
+  },
+  verify: { title: "Confirm your email", continue: "Continue" },
+  forgot: {
+    title: "Reset your password", lede: "Enter your email address and we'll send you a link to choose a new password.",
+    button: "Send reset link", back: "Back to log in",
+  },
+  reset: { title: "Choose a new password", label: "New password", button: "Change password" },
+  invite: { title: "Join your team", signInFirst: "Log in or create an account with the email address the invitation was sent to." },
+  page: {
+    title: "Your account", profile: "Profile", saveName: "Save name", nameSaved: "Name saved.",
+    unverified: "Confirm your email address to buy a package.", resend: "Send the link again", resent: "Link sent. Check your inbox.",
+    password: "Password", currentPassword: "Current password", newPassword: "New password", changePassword: "Change password",
+    googleOnlyHint: "Leave this empty if you've only ever logged in with Google.",
+    twoStep: "Two-step login",
+    mfaOn: (left: number) => `Two-step login is on. You have ${plural(left, "recovery code")} left.`,
+    mfaOffText: "Two-step login is off. Turn it on so a stolen password isn't enough to get into your account.",
+    turnOn: "Turn on two-step login", turnOff: "Turn off two-step login", newCodes: "Make new recovery codes",
+    mfaOff: "Two-step login is off.", provePrompt: "Enter your password to confirm.",
+    sessions: "Where you're logged in", thisDevice: "This device", signOut: "Log out there", sessionEnded: "Logged out on that device.",
+    unknownDevice: "Unknown device", lastSeen: (when: string) => `last active ${when}`,
+  },
+  device: (ua: string) => {
+    const browser = ["Edge", "Firefox", "Chrome", "Safari"].find((b) => ua.includes(b)) ?? "Browser";
+    const os = [["Windows", "Windows"], ["Mac OS", "Mac"], ["iPhone", "iPhone"], ["Android", "Android"], ["Linux", "Linux"]]
+      .find(([k]) => ua.includes(k))?.[1];
+    return os ? `${browser} on ${os}` : browser;
+  },
+};
+
+// ---------- portal ----------
+export const CLIENT_STATUS: Record<string, string> = {
+  active: "Active", past_due: "Payment overdue", cancelled: "Cancelled", closed: "Closed",
+};
+
+export const PORTAL = {
+  loading: "Loading…", agencyConsole: "Agency console", clientPortal: "Client portal",
+  allClients: "All clients", people: "People", freeCheck: "Free website check", account: "Your account",
+  clients: "Clients", yourBusinesses: "Your businesses", logout: "Log out",
+  waiting: (n: number) => `${n} waiting for client approval`,
+  demoSite: "Local testing", inbox: "Email inbox", resetDemo: "Reset demo data",
+  resetConfirm: "Reset the demo website and erase all platform data?",
+  statusBanner: {
+    past_due: "Your last payment didn't go through, so changes to your website are paused. Update your payment details to carry on.",
+    cancelled: "This account is cancelled and is now read-only. You can download your data until it closes.",
+    closed: "This account is closed. Download your data before it's deleted.",
+  } as Record<string, string>,
+  fixPayment: "Update payment details",
+};
+
+export const ADMIN = {
+  title: "People", person: "Person", access: "Access", security: "Security", lastLogin: "Last login",
+  agency: "SEOSys admin", noPackage: "No package yet", verified: "Email confirmed", unverified: "Email not confirmed",
+  twoStep: "two-step login", google: "Google sign-in", suspended: "Suspended", never: "Never",
+  suspend: "Suspend", reactivate: "Reactivate", role: { owner: "owner", member: "member" } as Record<string, string>,
+  confirmSuspend: (who: string) => `Suspend ${who}? They'll be logged out everywhere and can't log in until you reactivate them.`,
+  done: { suspend: "Account suspended.", reactivate: "Account reactivated." } as Record<string, string>,
+  logTitle: "Security and account log", when: "When", who: "Who", what: "What", from: "From",
+};
+
+export const TEAM = {
+  title: "Team", lede: "Everyone here can see your dashboard and reports. Only people who can approve can let changes go live.",
+  owner: "Owner", member: "Can view", approver: "Can approve", you: "you", twoStep: "Two-step login on",
+  invite: "Invite someone", email: "Their email address", canApprove: "They can approve changes", send: "Send invitation",
+  sent: (email: string) => `Invitation sent to ${email}.`, pending: "Invitations waiting", expires: (when: string) => `expires ${when}`,
+  cancel: "Cancel invitation", remove: "Remove", makeOwner: "Make owner",
+  confirmRemove: (name: string) => `Remove ${name} from the team? They'll lose access straight away.`,
+  confirmOwner: (name: string) => `Make ${name} the owner? You'll stay on the team and can still approve changes, but they'll manage billing and the team.`,
+  approveToggle: "Can approve", requireTwoStep: "Require two-step login for everyone on the team",
+  requireNeedsYours: "Turn on two-step login for yourself first.",
+};
+
+export const BILLING = {
+  title: "Billing", plan: "Package", status: "Status", renews: (when: string) => `Renews ${when}`,
+  cancels: (when: string) => `Ends ${when}`, manage: "Manage billing", manageHint: "Change your card, see invoices or cancel in Stripe's secure billing page.",
+  offline: "You're billed by invoice. Contact us to change your package.", none: "No package on file.",
+};
+
+export const SITE_SETUP = {
+  title: "Add your website", lede: "Tell us where your website is so we can run your first check.",
+  url: "Website address", platform: "What it's built with", save: "Save website",
+  platforms: { wordpress: "WordPress", shopify: "Shopify", github: "Custom code (GitHub)", other: "Something else" } as Record<string, string>,
+  keyTitle: "Your plugin key",
+  keyLede: "Paste this key into the SEOSys plugin settings in WordPress. It's shown only once. If you lose it, save your website again to get a new one.",
+  done: "Done",
+};

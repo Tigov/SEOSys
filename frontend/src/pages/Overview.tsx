@@ -1,4 +1,4 @@
-import { getRole, patch, post, type Summary } from "../api";
+import { can, getRole, patch, post, type Summary } from "../api";
 import { ActionButton, LineChart, Meter, fmtDate, useToast } from "../components/ui";
 import { plural } from "../labels";
 
@@ -25,7 +25,7 @@ export function Overview({ s, refresh, go }: { s: Summary; refresh: () => void; 
   // What needs a person's attention, in priority order, phrased for whoever is viewing.
   const todo: { text: string; tab: string; tone: "critical" | "attn" | "info" }[] = [];
   if (s.waiting_on_client)
-    todo.push({ text: role === "client" ? `Approve or reject ${plural(s.waiting_on_client, "change")}. Nothing on your site changes until you do.`
+    todo.push({ text: can("change.approve") ? `Approve or reject ${plural(s.waiting_on_client, "change")}. Nothing on your site changes until you do.`
       : `${plural(s.waiting_on_client, "change")} waiting for the client to approve.`, tab: "changes", tone: "attn" });
   if (role === "staff" && drafts) todo.push({ text: `${plural(drafts, "draft")} to review and send for approval.`, tab: "changes", tone: "info" });
   if (role === "staff" && approved) todo.push({ text: `${plural(approved, "approved change")} ready to deploy.`, tab: "changes", tone: "info" });
@@ -110,12 +110,13 @@ export function Overview({ s, refresh, go }: { s: Summary; refresh: () => void; 
         <section className="panel" aria-labelledby="safety-title">
           <h2 id="safety-title">Safety settings</h2>
           <label className="switch">
-            <input type="checkbox" checked={!!s.client.freeze_deploys} onChange={(e) => setSetting({ freeze_deploys: e.target.checked })} />
+            <input type="checkbox" checked={!!s.client.freeze_deploys} disabled={!can("client.settings")}
+              onChange={(e) => setSetting({ freeze_deploys: e.target.checked })} data-testid="freeze-deploys" />
             <span><strong>Freeze all deployments</strong>Nothing can be changed on the site while this is on.</span>
           </label>
           <label className="switch">
-            <input type="checkbox" checked={!!s.client.auto_approve_low} disabled={role !== "client"}
-              onChange={(e) => setSetting({ auto_approve_low: e.target.checked })} />
+            <input type="checkbox" checked={!!s.client.auto_approve_low} disabled={role !== "client" || !can("client.settings")}
+              onChange={(e) => setSetting({ auto_approve_low: e.target.checked })} data-testid="auto-approve-low" />
             <span><strong>Auto-approve low-risk changes</strong>Titles, descriptions, alt text and schema on single pages.
               {role !== "client" && " Only the client can turn this on."}</span>
           </label>

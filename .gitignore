@@ -8,3 +8,4 @@ frontend/node_modules
 .pytest_cache/
 .code-review-graph/
 notes/
+.superpowers/

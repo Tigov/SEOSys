@@ -24,7 +24,7 @@ from .adapters.llm import get_writer
 from .adapters.site_wp import AdapterError, WordPressAdapter
 from .auth import google_signin, sessions, tokens
 from .auth import routes as auth_routes
-from .auth.service import AuthError
+from .auth.service import AuthError, reactivate, suspend
 from .config import settings
 from .db import ClientRepo, Database, now
 from .fixes import propose_for_finding
@@ -97,6 +97,11 @@ class MemberIn(BaseModel):
 
 class TransferIn(BaseModel):
     user_id: int
+
+
+class SiteIn(BaseModel):
+    base_url: HttpUrl
+    cms: Literal["wordpress", "shopify", "github", "other"] = "wordpress"
 
 
 class CheckoutIn(BaseModel):
@@ -287,6 +292,20 @@ def create_app(db: Database | None = None) -> FastAPI:
             r.log(a.actor, "settings.updated", f"client:{client_id}", changes, actor_user_id=a.user_id)
         return r.client()
 
+    @app.put("/api/clients/{client_id}/site")
+    def set_site(client_id: int, body: SiteIn, a: Access = Depends(require("client.settings"))) -> dict[str, Any]:
+        """Add or change the client's website. A WordPress site gets a new plugin key, shown only in this answer."""
+        r = repo(a)
+        base_url = str(body.base_url).rstrip("/")
+        key = tokens.new() if body.cms == "wordpress" else None
+        existing = r.list("sites")
+        if existing:
+            r.update("sites", existing[0]["id"], base_url=base_url, cms=body.cms, adapter_secret=key)
+        else:
+            r.insert("sites", {"base_url": base_url, "cms": body.cms, "adapter_secret": key, "created_at": now()})
+        r.log(a.actor, "site.updated", f"client:{client_id}", {"url": base_url, "cms": body.cms}, actor_user_id=a.user_id)
+        return {"site": r.public_site(), "plugin_key": key}
+
     @app.post("/api/clients/{client_id}/audits")
     async def run_audit(client_id: int, a: Access = Depends(require("work.run"))) -> dict[str, Any]:
         try:
@@ -470,6 +489,33 @@ def create_app(db: Database | None = None) -> FastAPI:
     @app.post("/api/clients/{client_id}/billing/portal")
     def billing_portal(client_id: int, a: Access = Depends(require("billing.manage"))) -> dict[str, str]:
         return {"url": billing.portal_url(database, a)}
+
+    @app.get("/api/admin/users")
+    def admin_users(a: Access = Depends(require("admin"))) -> list[dict[str, Any]]:
+        return database.query(
+            "SELECT u.id, u.email, u.name, u.is_admin, u.status, (u.email_verified_at IS NOT NULL) AS email_verified, "
+            "(u.totp_enabled_at IS NOT NULL) AS two_step, (u.google_sub IS NOT NULL) AS google, u.created_at, u.last_login_at, "
+            "coalesce(json_agg(json_build_object('client_id', c.id, 'client_name', c.name, 'role', m.role)) "
+            "FILTER (WHERE c.id IS NOT NULL), '[]') AS clients "
+            "FROM users u LEFT JOIN memberships m ON m.user_id = u.id LEFT JOIN clients c ON c.id = m.client_id "
+            "GROUP BY u.id ORDER BY u.created_at DESC")
+
+    @app.post("/api/admin/users/{user_id}/suspend")
+    def admin_suspend(user_id: int, a: Access = Depends(require("admin"))) -> dict[str, bool]:
+        if user_id == a.user_id:
+            raise PermissionError("You can't suspend your own account.")
+        suspend(database, user_id, a.actor)
+        return {"ok": True}
+
+    @app.post("/api/admin/users/{user_id}/reactivate")
+    def admin_reactivate(user_id: int, a: Access = Depends(require("admin"))) -> dict[str, bool]:
+        reactivate(database, user_id, a.actor)
+        return {"ok": True}
+
+    @app.get("/api/admin/audit")
+    def admin_audit(a: Access = Depends(require("admin"))) -> list[dict[str, Any]]:
+        return database.query("SELECT id, client_id, actor, action, target, detail, ip, at FROM audit_events "
+                              "ORDER BY id DESC LIMIT 200")
 
     @app.post("/api/admin/clients/{client_id}/activate")
     def activate(client_id: int, a: Access = Depends(require("admin"))) -> dict[str, Any]:

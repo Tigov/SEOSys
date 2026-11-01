@@ -1,28 +1,34 @@
 import { useState, type FormEvent } from "react";
-import { api, getRole, post, type Client } from "../api";
-import { Empty, ErrorNote, useLoad, useToast } from "../components/ui";
+import { api, post, type Client } from "../api";
+import { ErrorNote, useLoad, useToast } from "../components/ui";
+import { CLIENT_STATUS } from "../labels";
 
 export function Clients() {
   const { data, error, reload } = useLoad(() => api<Client[]>("/api/clients"), []);
   const [adding, setAdding] = useState(false);
-  if (getRole() !== "staff") {
-    return <Empty title="Clients see only their own account."><p>Switch to the strategist view to see every client.</p></Empty>;
-  }
+  const toast = useToast();
+  const activate = async (c: Client) => {
+    if (!window.confirm(`Mark ${c.name} as active? Use this for clients who pay by invoice or bank transfer.`)) return;
+    try { await post(`/api/admin/clients/${c.id}/activate`); toast("ok", `${c.name} is active.`); reload(); }
+    catch (e) { toast("error", (e as Error).message); }
+  };
   return (
     <div className="stack">
       <div className="page-head">
         <h1>Clients</h1>
-        <button type="button" className="btn btn-secondary" onClick={() => setAdding((a) => !a)}>{adding ? "Close" : "Add a client"}</button>
+        <button type="button" className="btn btn-secondary" onClick={() => setAdding((a) => !a)} data-testid="add-client">{adding ? "Close" : "Add a client"}</button>
       </div>
       {adding && <AddClient onDone={() => { setAdding(false); reload(); }} />}
       {error && <ErrorNote text={error} />}
       <table className="table">
-        <thead><tr><th>Business</th><th>City</th><th className="num">Site health</th><th className="num">Waiting for client</th></tr></thead>
+        <thead><tr><th>Business</th><th>Package</th><th>Account</th><th className="num">Site health</th><th className="num">Waiting for client</th></tr></thead>
         <tbody>
           {(data ?? []).map((c) => (
             <tr key={c.id}>
               <td><a href={`#/clients/${c.id}/overview`} className="cell-title">{c.name}</a></td>
-              <td>{c.city}{c.region ? `, ${c.region}` : ""}</td>
+              <td>{c.plan ? c.plan[0].toUpperCase() + c.plan.slice(1) : "Not billed online"}</td>
+              <td>{CLIENT_STATUS[c.status ?? "active"]}
+                {c.status && c.status !== "active" && <> <button type="button" className="link-btn" onClick={() => activate(c)} data-testid={`activate-${c.id}`}>Activate</button></>}</td>
               <td className="num">{c.health_score ?? "Not audited"}</td>
               <td className="num">{c.waiting_on_client || ""}</td>
             </tr>
@@ -58,8 +64,8 @@ function AddClient({ onDone }: { onDone: () => void }) {
       <label>Platform
         <select value={form.cms} onChange={set("cms")}>
           <option value="wordpress">WordPress (plugin can apply fixes)</option>
-          <option value="shopify">Shopify (not in this PoC)</option>
-          <option value="github">Custom code on GitHub (not in this PoC)</option>
+          <option value="shopify">Shopify (recommendations only for now)</option>
+          <option value="github">Custom code on GitHub (recommendations only for now)</option>
           <option value="other">Other (recommend only)</option>
         </select>
       </label>

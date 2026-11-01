@@ -1,15 +1,15 @@
-// Thin typed client for the platform API. The role header stands in for real auth in the PoC.
-export type Role = "staff" | "client";
+// Thin typed client for the SEOSys API. The session lives in an HttpOnly cookie; changes also send its CSRF token.
 
 export interface Client {
   id: number; name: string; city: string; region: string; phone: string;
-  services: string[]; competitors: string[]; auto_approve_low: number; freeze_deploys: number;
+  services: string[]; competitors: string[]; auto_approve_low: boolean; freeze_deploys: boolean;
   monthly_budget_usd: number; health_score?: number | null; waiting_on_client?: number;
+  status?: ClientStatus; plan?: string | null; require_mfa?: boolean;
 }
 export interface Site { id: number; base_url: string; cms: string }
 export interface Alert { id: number; level: string; message: string; at: string }
 export interface Summary {
-  client: Client; site: Site; health_score: number | null; last_audit: string | null; pages_crawled: number;
+  client: Client; site: Site | null; my_role: string; can: string[]; health_score: number | null; last_audit: string | null; pages_crawled: number;
   health_history: { crawl_id: number; at: string; health_score: number }[];
   open_findings: Record<string, number>; open_critical_high: number; changes: Record<string, number>;
   waiting_on_client: number; visibility: VisRun | null; spend_this_month_usd: number; budget_usd: number; alerts: Alert[];
@@ -63,40 +63,72 @@ export interface PageSpeed {
   lab: { lcp_ms: number | null; cls: number | null; tbt_ms: number | null }; tested_at: string;
 }
 
-let currentRole: Role = (localStorage.getItem("role") as Role) || "staff";
-export const getRole = () => currentRole;
-export function setRole(role: Role) {
-  currentRole = role;
-  localStorage.setItem("role", role);
+// ---------- accounts ----------
+export interface Membership {
+  client_id: number; client_name: string; role: "owner" | "member"; can_approve: boolean; status: ClientStatus;
+  plan: string | null; require_mfa: boolean;
 }
+export type ClientStatus = "active" | "past_due" | "cancelled" | "closed";
+export interface Me {
+  user: { id: number; email: string; name: string; is_admin: boolean; email_verified: boolean; totp_enabled: boolean };
+  mfa_passed: boolean; csrf_token: string; memberships: Membership[];
+  gate: "mfa_required" | "mfa_setup_required" | null; recovery_codes_left: number | null;
+}
+export interface Plan { id: string; name: string; mode: "subscription" | "payment"; price_label: string; summary: string; includes: string[]; available: boolean }
+export interface SessionRow { id: string; current: boolean; created_at: string; last_seen_at: string; ip: string | null; user_agent: string }
+export interface TeamMember { user_id: number; name: string; email: string; role: "owner" | "member"; can_approve: boolean; two_step: boolean; joined_at: string }
+export interface Invite { id: number; email: string; can_approve: boolean; expires_at: string; created_at: string }
+export interface BillingSummary {
+  plan: Plan | null; status: ClientStatus; billed_online: boolean;
+  subscription: { plan: string; status: string; current_period_end: string | null; cancel_at: string | null } | null;
+}
+
+// The person's role in the client they're looking at, and what that lets them do (sent by the server with each client).
+export type Role = "staff" | "client";
+let currentRole: Role = "client";
+let currentCan = new Set<string>();
+let csrfToken = "";
+export const getRole = () => currentRole;
+export const can = (action: string) => currentCan.has(action);
+export function setAccess(myRole: string, actions: string[]) {
+  currentRole = myRole === "admin" ? "staff" : "client";
+  currentCan = new Set(actions);
+}
+export const setCsrf = (token: string) => { csrfToken = token; };
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }
 
+// Fired when the server says the session has ended, so the app can show the login page.
+export const SIGNED_OUT = "seosys:signed-out";
+
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const unsafe = init.method && init.method !== "GET";
   const res = await fetch(path, {
+    credentials: "same-origin",
     ...init,
     headers: {
-      "Content-Type": "application/json",
-      "X-Role": currentRole,
-      "X-Actor": currentRole === "staff" ? "staff:strategist" : "client:owner",
+      ...(init.body !== undefined ? { "Content-Type": "application/json" } : {}),
+      ...(unsafe && csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
       ...(init.headers || {}),
     },
   });
   const text = await res.text();
-  const body = text ? JSON.parse(text) : null;
+  let body: any = null;
+  try { body = text ? JSON.parse(text) : null; } catch { body = null; }
   if (!res.ok) {
+    if (res.status === 401 && !path.startsWith("/api/auth/")) window.dispatchEvent(new Event(SIGNED_OUT));
     const detail = body && typeof body.detail === "string" ? body.detail : `Request failed (${res.status})`;
     throw new ApiError(res.status, detail);
   }
   return body as T;
 }
 
-// Opens an HTML page from the API (e.g. the monthly report) in a new tab, sending the role headers.
+// Opens an HTML page from the API (e.g. the monthly report) in a new tab.
 export async function openHtml(path: string) {
   const tab = window.open("", "_blank");
-  const res = await fetch(path, { headers: { "X-Role": currentRole, "X-Actor": currentRole === "staff" ? "staff:strategist" : "client:owner" } });
+  const res = await fetch(path, { credentials: "same-origin" });
   if (!res.ok) { tab?.close(); throw new ApiError(res.status, `Could not open the page (${res.status})`); }
   const url = URL.createObjectURL(new Blob([await res.text()], { type: "text/html" }));
   if (tab) tab.location.href = url; else window.location.href = url;
@@ -106,3 +138,4 @@ export const post = <T,>(path: string, body?: unknown) =>
   api<T>(path, { method: "POST", body: body === undefined ? undefined : JSON.stringify(body) });
 export const patch = <T,>(path: string, body: unknown) => api<T>(path, { method: "PATCH", body: JSON.stringify(body) });
 export const del = <T,>(path: string) => api<T>(path, { method: "DELETE" });
+export const put = <T,>(path: string, body: unknown) => api<T>(path, { method: "PUT", body: JSON.stringify(body) });

@@ -41,7 +41,7 @@ def _calls(app):
     for route in app.routes:
         if not isinstance(route, APIRoute) or route.path.startswith(SKIP_PREFIXES):
             continue
-        path = route.path.replace("{action}", "approve")
+        path = route.path.replace("{action}", "approve").replace("{user_id}", "2")  # user 1 is the admin
         path = re.sub(r"\{[a-z_]+\}", "1", path)
         for method in sorted(route.methods - {"HEAD"}):
             yield method, path, route
