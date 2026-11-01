@@ -82,8 +82,6 @@ def upgrade() -> None:
     sa.Column('totp_secret', sa.Text(), nullable=True),
     sa.Column('totp_enabled_at', postgresql.TIMESTAMP(timezone=True), nullable=True),
     sa.Column('totp_last_step', sa.BigInteger(), nullable=True),
-    sa.Column('failed_logins', sa.Integer(), server_default=sa.text('0'), nullable=False),
-    sa.Column('locked_until', postgresql.TIMESTAMP(timezone=True), nullable=True),
     sa.Column('password_changed_at', postgresql.TIMESTAMP(timezone=True), nullable=True),
     sa.Column('status', sa.Text(), server_default='active', nullable=False),
     sa.Column('created_at', postgresql.TIMESTAMP(timezone=True), server_default=sa.text('now()'), nullable=False),

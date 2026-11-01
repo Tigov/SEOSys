@@ -104,3 +104,39 @@ def audited(api):
     r = api.post("/api/clients/1/audits", headers=STAFF)
     assert r.status_code == 200, r.text
     return api
+
+
+GOOD_PASSWORD = "purple tractor sings loudly"
+
+
+@pytest.fixture()
+def mail(db):
+    """Sends whatever is queued to an in-memory outbox and returns it: out = mail(); out.last_link(email)."""
+    from seo_platform import mailer
+
+    box = mailer.Outbox()
+
+    def flush():
+        mailer.send_pending(db, box)
+        return box
+
+    return flush
+
+
+@pytest.fixture()
+def make_user(db):
+    """Create an account directly: make_user("a@example.com", admin=False, verified=True) -> user id."""
+    from seo_platform.auth import passwords
+
+    def create(email, password=GOOD_PASSWORD, name="Test User", admin=False, verified=True, status="active"):
+        return db.insert("users", {"email": email, "name": name, "password_hash": passwords.hash(password),
+                                   "is_admin": admin, "status": status,
+                                   "email_verified_at": "2026-01-01T00:00:00+00:00" if verified else None})
+
+    return create
+
+
+def login(client, email, password=GOOD_PASSWORD):
+    r = client.post("/api/auth/login", json={"email": email, "password": password})
+    assert r.status_code == 200, r.text
+    return r

@@ -6,6 +6,7 @@ X-Actor headers so role rules can be exercised. Production uses Cognito JWTs
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -21,6 +22,9 @@ from pydantic import BaseModel, Field, HttpUrl
 from . import changes as change_svc
 from . import services, visibility
 from .adapters import google
+from .auth import routes as auth_routes
+from .auth.service import AuthError
+from . import mailer
 from .adapters.llm import get_writer
 from .adapters.site_wp import AdapterError, WordPressAdapter
 from .config import settings
@@ -98,6 +102,16 @@ def seed_demo(db: Database) -> None:
     db.log(cid, "system", "client.created", f"client:{cid}", {"seed": True})
 
 
+async def _send_mail_forever(database: Database) -> None:
+    """Drain the email outbox every few seconds. Failures are logged and retried by the outbox itself."""
+    while True:
+        try:
+            await asyncio.to_thread(mailer.send_pending, database)
+        except Exception:  # keep the loop alive; the row records what went wrong
+            log.exception("sending queued email failed")
+        await asyncio.sleep(5)
+
+
 def create_app(db: Database | None = None) -> FastAPI:
     database = db or Database(settings.database_url)
 
@@ -105,14 +119,23 @@ def create_app(db: Database | None = None) -> FastAPI:
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         if not settings.is_production:
             seed_demo(database)
+        sender = None if settings.is_test else asyncio.create_task(_send_mail_forever(database))
         yield
+        if sender:
+            sender.cancel()
 
     app = FastAPI(title="SEO Platform PoC", lifespan=lifespan)
     app.state.db = database
     app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
                        allow_methods=["*"], allow_headers=["*"])
 
+    app.include_router(auth_routes.router)
+
     # ---------- error mapping ----------
+    @app.exception_handler(AuthError)
+    async def auth_error(_: Request, exc: AuthError) -> JSONResponse:
+        return JSONResponse({"detail": str(exc)}, status_code=exc.status)
+
     @app.exception_handler(LookupError)
     async def not_found(_: Request, exc: LookupError) -> JSONResponse:
         return JSONResponse({"detail": str(exc)}, status_code=404)

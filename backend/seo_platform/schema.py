@@ -69,8 +69,6 @@ users = Table(
     Column("totp_secret", Text),
     Column("totp_enabled_at", TZ),
     Column("totp_last_step", BigInteger),
-    Column("failed_logins", Integer, nullable=False, server_default=text("0")),
-    Column("locked_until", TZ),
     Column("password_changed_at", TZ),
     Column("status", Text, nullable=False, server_default="active"),
     _created(),
