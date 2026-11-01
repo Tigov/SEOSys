@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from ..db import Database
-from . import service, sessions
+from . import mfa, service, sessions
 from .sessions import Principal
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -116,7 +116,8 @@ def logout(request: Request, response: Response, db: Database = Depends(get_db))
 
 @router.get("/me")
 def me(principal: Principal = Depends(require_login), db: Database = Depends(get_db)) -> dict[str, Any]:
-    return service.me(db, principal)
+    return {**service.me(db, principal), "gate": mfa.gate(principal),
+            "recovery_codes_left": mfa.remaining_codes(db, principal.user_id) if principal.totp_enabled else None}
 
 
 @router.patch("/me")
@@ -167,3 +168,53 @@ def end_session(public_id: str, principal: Principal = Depends(require_login), d
     if not sessions.end_by_public_id(db, principal, public_id):
         raise HTTPException(404, "That session has already ended.")
     return {"ok": True}
+
+
+# ---------- two-step login ----------
+
+class CodeIn(BaseModel):
+    code: str = Field(max_length=20)
+
+
+class ProveIn(BaseModel):
+    password: str = Field("", max_length=1024)
+    code: str = Field("", max_length=20)
+
+
+@router.post("/mfa/setup")
+def mfa_setup(principal: Principal = Depends(require_login), db: Database = Depends(get_db)) -> dict[str, str]:
+    return mfa.setup(db, principal)
+
+
+@router.post("/mfa/enable")
+def mfa_enable(body: CodeIn, request: Request, response: Response, principal: Principal = Depends(require_login),
+               db: Database = Depends(get_db)) -> dict[str, Any]:
+    codes, raw = mfa.enable(db, principal, body.code, client_ip(request), user_agent(request))
+    _start_session(response, raw, principal.is_admin)
+    return {"recovery_codes": codes}
+
+
+@router.post("/mfa/verify")
+def mfa_verify(body: CodeIn, request: Request, response: Response, principal: Principal = Depends(require_login),
+               db: Database = Depends(get_db)) -> dict[str, bool]:
+    _start_session(response, mfa.verify(db, principal, body.code, client_ip(request), user_agent(request)), principal.is_admin)
+    return {"ok": True}
+
+
+@router.post("/mfa/recovery")
+def mfa_recovery(body: CodeIn, request: Request, response: Response, principal: Principal = Depends(require_login),
+                 db: Database = Depends(get_db)) -> dict[str, Any]:
+    raw = mfa.use_recovery_code(db, principal, body.code, client_ip(request), user_agent(request))
+    _start_session(response, raw, principal.is_admin)
+    return {"ok": True, "codes_left": mfa.remaining_codes(db, principal.user_id)}
+
+
+@router.post("/mfa/disable")
+def mfa_disable(body: ProveIn, principal: Principal = Depends(require_login), db: Database = Depends(get_db)) -> dict[str, bool]:
+    mfa.disable(db, principal, body.password, body.code)
+    return {"ok": True}
+
+
+@router.post("/mfa/recovery-codes")
+def mfa_new_codes(body: ProveIn, principal: Principal = Depends(require_login), db: Database = Depends(get_db)) -> dict[str, Any]:
+    return {"recovery_codes": mfa.regenerate_codes(db, principal, body.password, body.code)}

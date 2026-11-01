@@ -28,7 +28,8 @@ Transport = Callable[[EmailMessage], None]
 
 def queue(db: Database, to_email: str, template: str, **context: Any) -> int:
     render(template, context)  # fail now, inside the caller's transaction, if the template or context is wrong
-    return db.insert("email_outbox", {"to_email": to_email, "template": template, "context": context})
+    return db.insert("email_outbox", {"to_email": to_email, "template": template, "context": context,
+                                      "created_at": clock.now(), "next_attempt_at": clock.now()})
 
 
 def build(row: dict[str, Any]) -> EmailMessage:
