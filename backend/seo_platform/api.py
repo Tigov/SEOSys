@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, HttpUrl
 
 from . import changes as change_svc
-from . import mailer, services, visibility
+from . import mailer, services, team, visibility
 from .adapters import google
 from .adapters.llm import get_writer
 from .adapters.site_wp import AdapterError, WordPressAdapter
@@ -83,6 +83,19 @@ class FaultIn(BaseModel):
 class GoogleSelectIn(BaseModel):
     gsc_site: str | None = Field(None, max_length=500)
     ga4_property: str | None = Field(None, max_length=100)
+
+
+class InviteIn(BaseModel):
+    email: str = Field(max_length=254)
+    can_approve: bool = False
+
+
+class MemberIn(BaseModel):
+    can_approve: bool
+
+
+class TransferIn(BaseModel):
+    user_id: int
 
 
 class PageSpeedIn(BaseModel):
@@ -413,6 +426,39 @@ def create_app(db: Database | None = None) -> FastAPI:
     @app.post("/api/clients/{client_id}/google/pagespeed")
     async def google_pagespeed(client_id: int, body: PageSpeedIn, a: Access = Depends(require("work.run"))) -> dict[str, Any]:
         return await google.pagespeed(repo(a), str(body.url) if body.url else None, body.strategy)
+
+    # ---------- team ----------
+    @app.get("/api/clients/{client_id}/team")
+    def team_list(client_id: int, a: Access = Depends(require("client.view"))) -> dict[str, Any]:
+        return team.listing(database, client_id)
+
+    @app.post("/api/clients/{client_id}/team/invites", status_code=201)
+    def team_invite(client_id: int, body: InviteIn, a: Access = Depends(require("team.manage"))) -> dict[str, Any]:
+        return team.invite(database, a, body.email, body.can_approve)
+
+    @app.delete("/api/clients/{client_id}/team/invites/{invite_id}")
+    def team_cancel_invite(client_id: int, invite_id: int, a: Access = Depends(require("team.manage"))) -> dict[str, bool]:
+        team.cancel_invite(database, a, invite_id)
+        return {"ok": True}
+
+    @app.patch("/api/clients/{client_id}/team/{user_id}")
+    def team_update(client_id: int, user_id: int, body: MemberIn, a: Access = Depends(require("team.manage"))) -> dict[str, bool]:
+        team.set_can_approve(database, a, user_id, body.can_approve)
+        return {"ok": True}
+
+    @app.delete("/api/clients/{client_id}/team/{user_id}")
+    def team_remove(client_id: int, user_id: int, a: Access = Depends(require("team.manage"))) -> dict[str, bool]:
+        team.remove(database, a, user_id)
+        return {"ok": True}
+
+    @app.post("/api/clients/{client_id}/team/transfer")
+    def team_transfer(client_id: int, body: TransferIn, a: Access = Depends(require("team.manage"))) -> dict[str, bool]:
+        team.transfer(database, a, body.user_id)
+        return {"ok": True}
+
+    @app.post("/api/invites/accept")
+    def invite_accept(body: auth_routes.TokenIn, a: Access = Depends(require("account"))) -> dict[str, int]:
+        return {"client_id": team.accept(database, a, body.token)}
 
     # ---------- reporting, log, export ----------
     @app.get("/api/clients/{client_id}/report", response_class=HTMLResponse)
