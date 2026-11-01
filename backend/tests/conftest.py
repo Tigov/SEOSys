@@ -28,13 +28,19 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from demo_site.app import create_app as create_demo  # noqa: E402
 from seo_platform import clock, net  # noqa: E402
+from seo_platform.auth import sessions, tokens  # noqa: E402
 from seo_platform.api import create_app  # noqa: E402
 from seo_platform.config import settings  # noqa: E402
 from seo_platform.db import Database  # noqa: E402
 
 BACKEND = Path(__file__).resolve().parents[1]
-STAFF = {"X-Role": "staff", "X-Actor": "staff:test"}
-CLIENT = {"X-Role": "client", "X-Actor": "client:owner"}
+# Act as one of the people seeded by the `api` fixture: api.get(url, headers=STAFF). The harness swaps this for that
+# person's real session cookie and CSRF token, so tests exercise the same auth path as the browser.
+STAFF = {"X-Test-As": "admin"}
+CLIENT = {"X-Test-As": "owner"}
+MEMBER = {"X-Test-As": "member"}
+APPROVER = {"X-Test-As": "approver"}
+UNSAFE = {"POST", "PUT", "PATCH", "DELETE"}
 
 
 def alembic_config() -> Config:
@@ -92,11 +98,59 @@ def demo():
     net.transport_factory = original
 
 
+class RoleClient(TestClient):
+    """TestClient that understands STAFF / CLIENT / MEMBER / APPROVER and adds the CSRF token for its own session."""
+
+    identities: dict[str, tuple[str, str]]
+
+    def request(self, method, url, **kwargs):
+        headers = dict(kwargs.pop("headers", None) or {})
+        who = headers.pop("X-Test-As", None)
+        if who:
+            raw, csrf = self.identities[who]
+            headers["Cookie"] = f"{sessions.COOKIE}={raw}"
+            headers.setdefault("X-CSRF-Token", csrf)
+        elif method.upper() in UNSAFE and "X-CSRF-Token" not in headers and self.cookies.get(sessions.COOKIE):
+            row = self.app.state.db.one("SELECT csrf_token FROM sessions WHERE id_hash = ?",
+                                        (tokens.digest(self.cookies[sessions.COOKIE]),))
+            if row:
+                headers["X-CSRF-Token"] = row["csrf_token"]
+        return super().request(method, url, headers=headers, **kwargs)
+
+
+def seed_people(db, client_id=1):
+    """The agency admin (two-step login done) plus an owner, a member and an approver of the demo client."""
+    from seo_platform.auth import passwords
+
+    people = {}
+    for who, admin in (("admin", True), ("owner", False), ("member", False), ("approver", False)):
+        uid = db.insert("users", {"email": f"{who}@seosys.test", "name": who.title(), "is_admin": admin,
+                                  "password_hash": passwords.hash(GOOD_PASSWORD),
+                                  "email_verified_at": "2026-01-01T00:00:00+00:00",
+                                  **({"totp_secret": "JBSWY3DPEHPK3PXP", "totp_enabled_at": "2026-01-01T00:00:00+00:00"}
+                                     if admin else {})})
+        if not admin:
+            db.insert("memberships", {"user_id": uid, "client_id": client_id, "role": "owner" if who == "owner" else "member",
+                                      "can_approve": who == "approver"})
+        user = db.one("SELECT * FROM users WHERE id = ?", (uid,))
+        raw = sessions.create(db, user, None, "pytest", mfa_passed=True)
+        csrf = db.one("SELECT csrf_token FROM sessions WHERE id_hash = ?", (tokens.digest(raw),))["csrf_token"]
+        people[who] = (raw, csrf)
+    return people
+
+
 @pytest.fixture()
-def api(demo, db):
-    app = create_app(db)
-    with TestClient(app) as client:
+def bare_api(demo, db):
+    """The app with the demo client but no people: for tests about accounts themselves."""
+    with RoleClient(create_app(db)) as client:
+        client.identities = {}
         yield client
+
+
+@pytest.fixture()
+def api(bare_api, db):
+    bare_api.identities = seed_people(db)
+    return bare_api
 
 
 @pytest.fixture()

@@ -64,7 +64,8 @@ async def run_audit(repo: ClientRepo, actor: str, kind: str = "audit") -> dict[s
     return {"crawl_id": crawl_id, "pages": len(page_rows), "findings": len(findings), "resolved": resolved, "health_score": score}
 
 
-async def grade(db: Database, url: str, email: str | None, business_name: str | None, city: str | None) -> dict[str, Any]:
+async def grade(db: Database, url: str, email: str | None, business_name: str | None, city: str | None,
+                user_id: int | None = None) -> dict[str, Any]:
     """Free grader (FDD M1): a quick, read-only crawl with no account or access needed."""
     result = await crawl(url, max_pages=15)
     rows = [p.to_row() for p in result.pages]
@@ -87,7 +88,7 @@ async def grade(db: Database, url: str, email: str | None, business_name: str | 
         "top_issues": [{"severity": f["severity"], "title": f["title"], "fix_hint": f["fix_hint"]} for f in top],
     }
     db.insert("leads", {"url": url, "email": email, "business_name": business_name, "city": city,
-                        "score": out["score"], "result": out, "created_at": now()})
+                        "score": out["score"], "result": out, "user_id": user_id, "created_at": now()})
     db.log(None, "grader", "grader.run", url, {"score": out["score"], "lead": bool(email)})
     return out
 
@@ -103,7 +104,7 @@ def summary(repo: ClientRepo) -> dict[str, Any]:
                for c in repo.list("crawls", "kind = 'audit' AND finished_at IS NOT NULL")]
     vis = visibility_metrics(repo)
     return {
-        "client": client, "site": repo.public_site(),
+        "client": client, "site": repo.public_site() if repo.list("sites") else None,
         "health_score": crawl["health_score"] if crawl else None, "last_audit": crawl["finished_at"] if crawl else None,
         "pages_crawled": crawl["pages_crawled"] if crawl else 0, "health_history": history,
         "open_findings": dict(sev_counts), "open_critical_high": sev_counts["critical"] + sev_counts["high"],

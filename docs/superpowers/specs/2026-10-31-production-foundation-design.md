@@ -194,7 +194,7 @@ route and fails if one has no declared action (public routes declare `public`).
 | Buy a package | | | | | ✓ (verified email) | |
 | View client dashboard, findings, changes, reports, Google data | ✓ | ✓ | ✓ | ✓ | | |
 | Comment on a change | ✓ | ✓ | ✓ | ✓ | | |
-| Approve or reject a change | ✓ | ✓ | | ✓ | | |
+| Approve or reject a change | | ✓ | | ✓ | | |
 | Client settings (auto-approve, freeze, require two-step) | ✓ | ✓ | | | | |
 | Connect or disconnect Google, choose properties | ✓ | ✓ | | | | |
 | Invite, remove, change member roles | ✓ | ✓ | | | | |

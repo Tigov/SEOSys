@@ -1,4 +1,5 @@
 """Accounts: sign-up, verification, login, lockout, sessions, reset and password change (spec section 5)."""
+import pytest
 from fastapi.testclient import TestClient
 
 from seo_platform import clock
@@ -7,6 +8,12 @@ from seo_platform.auth.service import suspend
 from tests.conftest import GOOD_PASSWORD, login
 
 NEW_PASSWORD = "green kettle hums softly"
+
+
+@pytest.fixture()
+def api(bare_api):
+    """These tests start with no accounts at all."""
+    return bare_api
 
 
 def token_from(link: str) -> str:

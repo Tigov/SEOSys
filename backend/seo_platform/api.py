@@ -1,8 +1,7 @@
-"""HTTP API and static portal (run: uvicorn seo_platform.api:app --port 8000 from the backend folder).
+"""HTTP API and portal (run: uvicorn seo_platform.api:app --port 8000 from the backend folder).
 
-Auth is out of scope for the PoC: the portal sends X-Role (staff | client) and
-X-Actor headers so role rules can be exercised. Production uses Cognito JWTs
-(TDD section 10).
+Every route declares what it needs with `require("<action>")` (see permissions.py). People sign in with a
+session cookie; every request that changes something also sends the session's CSRF token in X-CSRF-Token.
 """
 from __future__ import annotations
 
@@ -10,31 +9,32 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, AsyncIterator, Literal
+from typing import Any, AsyncIterator, Awaitable, Callable, Literal
 
 import httpx
-from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, HttpUrl
 
 from . import changes as change_svc
-from . import services, visibility
+from . import mailer, services, visibility
 from .adapters import google
+from .adapters.llm import get_writer
+from .adapters.site_wp import AdapterError, WordPressAdapter
 from .auth import google_signin, sessions, tokens
 from .auth import routes as auth_routes
 from .auth.service import AuthError
-from . import mailer
-from .adapters.llm import get_writer
-from .adapters.site_wp import AdapterError, WordPressAdapter
 from .config import settings
 from .db import ClientRepo, Database, now
 from .fixes import propose_for_finding
 from .net import BlockedHostError, make_client
+from .permissions import ACTIONS, CHANGE_ACTIONS, STATUS_ALLOWS, Access, require
 
 log = logging.getLogger("seo_platform")
 STATIC_DIR = Path(__file__).with_name("static")
+UNSAFE = {"POST", "PUT", "PATCH", "DELETE"}
+CSRF_EXEMPT = {"/api/billing/webhook"}
 
 DEMO_CLIENT = {
     "name": "Lone Star Comfort HVAC", "city": "Austin", "region": "TX", "phone": "(512) 555-0142",
@@ -44,35 +44,31 @@ DEMO_CLIENT = {
 }
 
 
-class Caller(BaseModel):
-    role: Literal["staff", "client"]
-    actor: str
-
-
 class GradeIn(BaseModel):
     url: HttpUrl
-    email: str | None = None
-    business_name: str | None = None
-    city: str | None = None
+    email: str | None = Field(None, max_length=254)
+    business_name: str | None = Field(None, max_length=200)
+    city: str | None = Field(None, max_length=120)
 
 
 class ClientIn(BaseModel):
-    name: str = Field(min_length=2)
-    city: str = ""
-    region: str = ""
-    phone: str = ""
-    street: str = ""
-    postal_code: str = ""
-    services: list[str] = []
-    competitors: list[str] = []
+    name: str = Field(min_length=2, max_length=200)
+    city: str = Field("", max_length=120)
+    region: str = Field("", max_length=120)
+    phone: str = Field("", max_length=40)
+    street: str = Field("", max_length=200)
+    postal_code: str = Field("", max_length=20)
+    services: list[str] = Field([], max_length=50)
+    competitors: list[str] = Field([], max_length=50)
     site_url: HttpUrl
     cms: Literal["wordpress", "shopify", "github", "other"] = "wordpress"
-    site_secret: str = ""
+    site_secret: str = Field("", max_length=200)
 
 
 class SettingsIn(BaseModel):
     auto_approve_low: bool | None = None
     freeze_deploys: bool | None = None
+    require_mfa: bool | None = None
 
 
 class BulkIn(BaseModel):
@@ -85,8 +81,8 @@ class FaultIn(BaseModel):
 
 
 class GoogleSelectIn(BaseModel):
-    gsc_site: str | None = None
-    ga4_property: str | None = None
+    gsc_site: str | None = Field(None, max_length=500)
+    ga4_property: str | None = Field(None, max_length=100)
 
 
 class PageSpeedIn(BaseModel):
@@ -130,12 +126,27 @@ def create_app(db: Database | None = None) -> FastAPI:
         if sender:
             sender.cancel()
 
-    app = FastAPI(title="SEO Platform PoC", lifespan=lifespan)
+    app = FastAPI(title=settings.app_name, lifespan=lifespan,
+                  docs_url=None if settings.is_production else "/docs", redoc_url=None,
+                  openapi_url=None if settings.is_production else "/openapi.json")
     app.state.db = database
-    app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
-                       allow_methods=["*"], allow_headers=["*"])
+    app.include_router(auth_routes.router, dependencies=[Depends(require("public"))])
 
-    app.include_router(auth_routes.router)
+    # ---------- CSRF ----------
+    @app.middleware("http")
+    async def csrf(request: Request, call_next: Callable[[Request], Awaitable[Any]]) -> Any:
+        """Changes need the session's CSRF token; without a session they must at least be JSON, which a
+        cross-site form can't send."""
+        path = request.url.path
+        if request.method in UNSAFE and path.startswith("/api/") and path not in CSRF_EXEMPT:
+            principal = await asyncio.to_thread(auth_routes.current_principal, request)
+            sent = request.headers.get("x-csrf-token", "")
+            if principal is not None and not tokens.same(sent, principal.csrf_token):
+                return JSONResponse({"detail": "Your session needs refreshing. Reload the page and try again."}, 403)
+            has_body = int(request.headers.get("content-length") or 0) > 0
+            if has_body and not request.headers.get("content-type", "").startswith("application/json"):
+                return JSONResponse({"detail": "Send JSON."}, 415)
+        return await call_next(request)
 
     # ---------- error mapping ----------
     @app.exception_handler(AuthError)
@@ -166,205 +177,189 @@ def create_app(db: Database | None = None) -> FastAPI:
     async def google_error(_: Request, exc: google.GoogleError) -> JSONResponse:
         return JSONResponse({"detail": str(exc)}, status_code=exc.status)
 
-    # ---------- dependencies ----------
+    # ---------- helpers ----------
+    def repo(a: Access) -> ClientRepo:
+        assert a.repo is not None
+        return a.repo
 
-    def caller(x_role: str | None = Header(None), x_actor: str = Header("")) -> Caller:
-        # Stand-in for real authentication (TDD section 10): a missing role is rejected, never assumed.
-        if x_role not in ("staff", "client"):
-            raise HTTPException(401, "Sign-in is missing. Send an X-Role header of staff or client.")
-        return Caller(role=x_role, actor=x_actor or f"{x_role}:demo")  # type: ignore[arg-type]
-
-    def repo_for(client_id: int) -> ClientRepo:
-        return database.for_client(client_id)
-
-    def staff_only(c: Caller) -> None:
-        if c.role != "staff":
-            raise PermissionError("Only the strategist can do this.")
-
-    def adapter_for(repo: ClientRepo) -> WordPressAdapter:
-        site = repo.site()
+    def adapter_for(r: ClientRepo) -> WordPressAdapter:
+        site = r.site()
         if site["cms"] != "wordpress":
-            raise HTTPException(400, f"Direct changes to {site['cms']} sites are not in this proof of concept yet. Recommendations only.")
+            raise HTTPException(400, f"Direct changes to {site['cms']} sites aren't supported yet. Recommendations only.")
         return WordPressAdapter(site["base_url"], site["adapter_secret"])
 
-    # ---------- health / grader ----------
+    # ---------- public ----------
     @app.get("/api/health")
-    def health() -> dict[str, Any]:
-        return {"ok": True, "llm": get_writer().name, "demo_site": settings.demo_site_url}
+    def health(a: Access = Depends(require("public"))) -> dict[str, Any]:
+        return {"ok": True}
 
+    @app.get("/api/auth/permissions")
+    def permissions_table(a: Access = Depends(require("public"))) -> dict[str, Any]:
+        return {"actions": {k: sorted(v) for k, v in ACTIONS.items()}, "change_actions": CHANGE_ACTIONS,
+                "status_allows": {k: (sorted(v) if v is not None else None) for k, v in STATUS_ALLOWS.items()}}
 
     @app.post("/api/grader")
-    async def grader(body: GradeIn) -> dict[str, Any]:
-        return await services.grade(database, str(body.url).rstrip("/"), body.email, body.business_name, body.city)
+    async def grader(body: GradeIn, a: Access = Depends(require("public"))) -> dict[str, Any]:
+        return await services.grade(database, str(body.url).rstrip("/"), body.email, body.business_name, body.city,
+                                    user_id=a.user_id)
 
+    # ---------- agency (admin) ----------
     @app.get("/api/leads")
-    def leads(c: Caller = Depends(caller)) -> list[dict[str, Any]]:
-        staff_only(c)
+    def leads(a: Access = Depends(require("admin"))) -> list[dict[str, Any]]:
         return database.query("SELECT id, url, email, business_name, city, score, created_at FROM leads ORDER BY id DESC")
 
-    # ---------- clients ----------
-
     @app.get("/api/clients")
-    def list_clients(c: Caller = Depends(caller)) -> list[dict[str, Any]]:
-        staff_only(c)
+    def list_clients(a: Access = Depends(require("admin"))) -> list[dict[str, Any]]:
         out = []
         for cl in database.list_clients():
-            repo = ClientRepo(database, cl["id"])
-            crawl = repo.latest_crawl()
+            r = ClientRepo(database, cl["id"])
+            crawl = r.latest_crawl()
             out.append({**cl, "health_score": crawl["health_score"] if crawl else None,
-                        "waiting_on_client": len(repo.list("change_requests", "status = 'awaiting_client'"))})
+                        "waiting_on_client": len(r.list("change_requests", "status = 'awaiting_client'"))})
         return out
 
     @app.post("/api/clients", status_code=201)
-    def create_client(body: ClientIn, c: Caller = Depends(caller)) -> dict[str, Any]:
-        staff_only(c)
+    def create_client(body: ClientIn, a: Access = Depends(require("admin"))) -> dict[str, Any]:
         data = body.model_dump()
         site_url, cms, secret = str(data.pop("site_url")).rstrip("/"), data.pop("cms"), data.pop("site_secret")
-        cid = database.create_client(**data, monthly_budget_usd=settings.default_monthly_budget_usd)
-        repo = database.for_client(cid)
-        repo.insert("sites", {"base_url": site_url, "cms": cms, "adapter_secret": secret, "created_at": now()})
-        repo.log(c.actor, "client.created", f"client:{cid}")
-        return repo.client()
+        with database.transaction():
+            cid = database.create_client(**data, monthly_budget_usd=settings.default_monthly_budget_usd)
+            r = database.for_client(cid)
+            r.insert("sites", {"base_url": site_url, "cms": cms, "adapter_secret": secret or None, "created_at": now()})
+            r.log(a.actor, "client.created", f"client:{cid}", actor_user_id=a.user_id)
+        return r.client()
 
+    @app.get("/api/ops/usage")
+    def usage(a: Access = Depends(require("admin"))) -> list[dict[str, Any]]:
+        return database.query("SELECT client_id, vendor, SUM(qty) AS qty, ROUND(SUM(cost_usd), 4) AS cost_usd "
+                              "FROM usage_events GROUP BY client_id, vendor ORDER BY client_id, cost_usd DESC")
+
+    # ---------- one client ----------
     @app.get("/api/clients/{client_id}")
-    def get_client(client_id: int, c: Caller = Depends(caller)) -> dict[str, Any]:
-        return services.summary(repo_for(client_id))
-
+    def get_client(client_id: int, a: Access = Depends(require("client.view"))) -> dict[str, Any]:
+        return {**services.summary(repo(a)), "my_role": a.role,
+                "can": sorted(action for action in ACTIONS if a.can(action))}
 
     @app.patch("/api/clients/{client_id}/settings")
-    def update_settings(client_id: int, body: SettingsIn, c: Caller = Depends(caller)) -> dict[str, Any]:
-        repo = repo_for(client_id)
-        changes = {k: int(v) for k, v in body.model_dump().items() if v is not None}
-        if "auto_approve_low" in changes and c.role != "client":
+    def update_settings(client_id: int, body: SettingsIn, a: Access = Depends(require("client.settings"))) -> dict[str, Any]:
+        r = repo(a)
+        changes = {k: v for k, v in body.model_dump().items() if v is not None}
+        if "auto_approve_low" in changes and a.role == "admin":
             raise PermissionError("Only the client can turn on auto-approval of low-risk changes.")
+        if changes.get("require_mfa") and a.role != "admin" and not (a.principal and a.principal.totp_enabled):
+            raise PermissionError("Turn on two-step login for yourself first, so you don't lock yourself out.")
         if changes:
-            repo.update_client(**changes)
-            repo.log(c.actor, "settings.updated", f"client:{client_id}", changes)
-        return repo.client()
+            r.update_client(**changes)
+            r.log(a.actor, "settings.updated", f"client:{client_id}", changes, actor_user_id=a.user_id)
+        return r.client()
 
-    # ---------- audit and findings ----------
     @app.post("/api/clients/{client_id}/audits")
-    async def run_audit(client_id: int, c: Caller = Depends(caller)) -> dict[str, Any]:
-        staff_only(c)
+    async def run_audit(client_id: int, a: Access = Depends(require("work.run"))) -> dict[str, Any]:
         try:
-            return await services.run_audit(repo_for(client_id), c.actor)
+            return await services.run_audit(repo(a), a.actor)
         except httpx.HTTPError as exc:
             raise HTTPException(502, f"The audit could not reach the website: {exc}")
 
     @app.get("/api/clients/{client_id}/findings")
-    def findings(client_id: int, status: str | None = None, c: Caller = Depends(caller)) -> list[dict[str, Any]]:
-        repo = repo_for(client_id)
-        rows = repo.list("findings", "status = ?", (status,)) if status else repo.list("findings")
+    def findings(client_id: int, status: str | None = None, a: Access = Depends(require("client.view"))) -> list[dict[str, Any]]:
+        r = repo(a)
+        rows = r.list("findings", "status = ?", (status,)) if status else r.list("findings")
         return sorted(rows, key=lambda f: (services.SEVERITY_ORDER.get(f["severity"], 9), -(f["impact"] or 0), f["id"]))
 
     @app.get("/api/clients/{client_id}/pages")
-    def pages(client_id: int, c: Caller = Depends(caller)) -> list[dict[str, Any]]:
-        repo = repo_for(client_id)
-        crawl = repo.latest_crawl()
-        return repo.list("pages", "crawl_id = ?", (crawl["id"],)) if crawl else []
+    def pages(client_id: int, a: Access = Depends(require("client.view"))) -> list[dict[str, Any]]:
+        r = repo(a)
+        crawl = r.latest_crawl()
+        return r.list("pages", "crawl_id = ?", (crawl["id"],)) if crawl else []
 
     @app.post("/api/clients/{client_id}/findings/{finding_id}/propose")
-    async def propose(client_id: int, finding_id: int, c: Caller = Depends(caller)) -> dict[str, Any]:
-        staff_only(c)
-        repo = repo_for(client_id)
-        finding = repo.get("findings", finding_id)
+    async def propose(client_id: int, finding_id: int, a: Access = Depends(require("work.run"))) -> dict[str, Any]:
+        r = repo(a)
+        finding = r.get("findings", finding_id)
         if finding is None:
             raise LookupError(f"Finding {finding_id} was not found for this client.")
-        ids = await propose_for_finding(repo, finding, get_writer(), adapter_for(repo), c.actor)
-        return {"created": ids}
+        return {"created": await propose_for_finding(r, finding, get_writer(), adapter_for(r), a.actor)}
 
     @app.post("/api/clients/{client_id}/changes/propose-all")
-    async def propose_all(client_id: int, c: Caller = Depends(caller)) -> dict[str, Any]:
-        staff_only(c)
-        repo = repo_for(client_id)
-        adapter, writer, created = adapter_for(repo), get_writer(), []
-        for f in repo.list("findings", "status = 'open' AND fix_type IS NOT NULL"):
-            created += await propose_for_finding(repo, f, writer, adapter, c.actor)
+    async def propose_all(client_id: int, a: Access = Depends(require("work.run"))) -> dict[str, Any]:
+        r = repo(a)
+        adapter, writer, created = adapter_for(r), get_writer(), []
+        for f in r.list("findings", "status = 'open' AND fix_type IS NOT NULL"):
+            created += await propose_for_finding(r, f, writer, adapter, a.actor)
         return {"created": created}
 
     # ---------- change requests ----------
     @app.get("/api/clients/{client_id}/changes")
-    def list_changes(client_id: int, c: Caller = Depends(caller)) -> list[dict[str, Any]]:
-        return repo_for(client_id).list("change_requests", order="id DESC")
+    def list_changes(client_id: int, a: Access = Depends(require("client.view"))) -> list[dict[str, Any]]:
+        return repo(a).list("change_requests", order="id DESC")
+
+    async def _apply(r: ClientRepo, a: Access, change_id: int, action: str) -> dict[str, Any]:
+        a.check(CHANGE_ACTIONS[action])
+        if action == "deploy":
+            return await change_svc.deploy_change(r, change_id, a.actor, a.change_role, adapter_for(r))
+        if action == "rollback":
+            return await change_svc.rollback_change(r, change_id, a.actor, a.change_role, adapter_for(r))
+        return change_svc.transition(r, change_id, action, a.actor, a.change_role)
+
+    @app.post("/api/clients/{client_id}/changes/bulk")
+    async def bulk(client_id: int, body: BulkIn, a: Access = Depends(require("client.view"))) -> dict[str, Any]:
+        r = repo(a)
+        a.check(CHANGE_ACTIONS[body.action])
+        source = {"submit": "draft", "approve": "awaiting_client", "deploy": "approved"}[body.action]
+        rows = r.list("change_requests", "status = ?", (source,))
+        if body.risk != "any":
+            rows = [row for row in rows if row["risk"] == body.risk]
+        results = []
+        for row in rows:
+            out = await _apply(r, a, row["id"], body.action)
+            results.append({"id": out["id"], "status": out["status"]})
+        return {"results": results}
 
     @app.post("/api/clients/{client_id}/changes/{change_id}/{action}")
     async def change_action(client_id: int, change_id: int,
                             action: Literal["submit", "approve", "reject", "discard", "deploy", "rollback"],
-                            c: Caller = Depends(caller)) -> dict[str, Any]:
-        repo = repo_for(client_id)
-        if action == "deploy":
-            return await change_svc.deploy_change(repo, change_id, c.actor, c.role, adapter_for(repo))
-        if action == "rollback":
-            return await change_svc.rollback_change(repo, change_id, c.actor, c.role, adapter_for(repo))
-        return change_svc.transition(repo, change_id, action, c.actor, c.role)
-
-
-    @app.post("/api/clients/{client_id}/changes/bulk")
-    async def bulk(client_id: int, body: BulkIn, c: Caller = Depends(caller)) -> dict[str, Any]:
-        repo = repo_for(client_id)
-        source = {"submit": "draft", "approve": "awaiting_client", "deploy": "approved"}[body.action]
-        rows = repo.list("change_requests", "status = ?", (source,))
-        if body.risk != "any":
-            rows = [r for r in rows if r["risk"] == body.risk]
-        results = []
-        for r in rows:
-            if body.action == "deploy":
-                out = await change_svc.deploy_change(repo, r["id"], c.actor, c.role, adapter_for(repo))
-            else:
-                out = change_svc.transition(repo, r["id"], body.action, c.actor, c.role)
-            results.append({"id": out["id"], "status": out["status"]})
-        return {"results": results}
+                            a: Access = Depends(require("client.view"))) -> dict[str, Any]:
+        return await _apply(repo(a), a, change_id, action)
 
     # ---------- AI visibility ----------
     @app.post("/api/clients/{client_id}/visibility/run")
-    def run_visibility(client_id: int, c: Caller = Depends(caller)) -> dict[str, Any]:
-        staff_only(c)
-        repo = repo_for(client_id)
-        if repo.month_spend() >= repo.client()["monthly_budget_usd"]:
-            repo.alert("warning", "Monthly budget reached; AI-visibility sampling paused.")
+    def run_visibility(client_id: int, a: Access = Depends(require("work.run"))) -> dict[str, Any]:
+        r = repo(a)
+        if r.month_spend() >= r.client()["monthly_budget_usd"]:
+            r.alert("warning", "Monthly budget reached; AI-visibility sampling paused.")
             raise HTTPException(402, "This client has reached its monthly running-cost cap. Raise the cap or wait until next month.")
-        return visibility.run_sample(repo, c.actor)
+        return visibility.run_sample(r, a.actor)
 
     @app.get("/api/clients/{client_id}/visibility")
-    def get_visibility(client_id: int, c: Caller = Depends(caller)) -> dict[str, Any]:
-        return visibility.metrics(repo_for(client_id))
+    def get_visibility(client_id: int, a: Access = Depends(require("client.view"))) -> dict[str, Any]:
+        return visibility.metrics(repo(a))
 
     @app.get("/api/clients/{client_id}/visibility/answers")
-    def answers(client_id: int, c: Caller = Depends(caller)) -> list[dict[str, Any]]:
-        repo = repo_for(client_id)
-        last = repo.list("ai_observations", order="run_no DESC")
+    def answers(client_id: int, a: Access = Depends(require("client.view"))) -> list[dict[str, Any]]:
+        r = repo(a)
+        last = r.list("ai_observations", order="run_no DESC")
         if not last:
             return []
-        prompts = {p["id"]: p["text"] for p in repo.list("prompts")}
-        rows = repo.list("ai_observations", "run_no = ?", (last[0]["run_no"],))
-        return [{**r, "prompt": prompts.get(r["prompt_id"], "")} for r in rows]
+        prompts = {p["id"]: p["text"] for p in r.list("prompts")}
+        rows = r.list("ai_observations", "run_no = ?", (last[0]["run_no"],))
+        return [{**row, "prompt": prompts.get(row["prompt_id"], "")} for row in rows]
 
-    # ---------- Google: connection (OAuth), Search Console, GA4, PageSpeed ----------
-    @app.get("/api/clients/{client_id}/connections/google")
-    def google_status(client_id: int, c: Caller = Depends(caller)) -> dict[str, Any]:
-        return google.status(repo_for(client_id))
-
-    @app.post("/api/clients/{client_id}/connections/google/start")
-    def google_start(client_id: int, response: Response, c: Caller = Depends(caller)) -> dict[str, str]:
-        url, state = google.start_connect(database, client_id, c.actor)
-        _set_state_cookie(response, state)
-        return {"auth_url": url}
-
+    # ---------- Google: sign-in, connection (OAuth), Search Console, GA4, PageSpeed ----------
     @app.get("/api/auth/google/start")
-    def google_signin_start() -> RedirectResponse:
+    def google_signin_start(a: Access = Depends(require("public"))) -> RedirectResponse:
         url, state = google.start_signin(database)
         response = RedirectResponse(url, status_code=303)
         _set_state_cookie(response, state)
         return response
 
     @app.post("/api/auth/google/link")
-    def google_link(body: auth_routes.TokenIn) -> dict[str, str]:
+    def google_link(body: auth_routes.TokenIn, a: Access = Depends(require("public"))) -> dict[str, str]:
         google_signin.confirm_link(database, body.token)
         return {"detail": "Google sign-in is now linked to your account."}
 
     @app.get("/api/oauth/google/callback")
-    async def google_callback(request: Request, state: str = "", code: str | None = None,
-                              error: str | None = None) -> RedirectResponse:
+    async def google_callback(request: Request, state: str = "", code: str | None = None, error: str | None = None,
+                              a: Access = Depends(require("public"))) -> RedirectResponse:
         # Google redirects the browser here. The one-time state, matched against the cookie set when this browser
         # started, identifies the request.
         pending = google.take_state(database, state, request.cookies.get(google.STATE_COOKIE))
@@ -374,11 +369,10 @@ def create_app(db: Database | None = None) -> FastAPI:
             target = {"signed_in": "/?signin=ok#/", "mfa": "/?signin=mfa#/login"}.get(outcome, f"/?signin={outcome}#/login")
             response = RedirectResponse(target, status_code=303)
             if raw:
-                old = auth_routes.current_principal(request)
-                if old:
-                    sessions.end(database, old.session_hash)
-                user = database.one("SELECT u.is_admin FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id_hash = ?",
-                                    (tokens.digest(raw),))
+                if a.principal:
+                    sessions.end(database, a.principal.session_hash)
+                user = database.one("SELECT u.is_admin FROM sessions s JOIN users u ON u.id = s.user_id "
+                                    "WHERE s.id_hash = ?", (tokens.digest(raw),))
                 response.set_cookie(value=raw, **sessions.cookie_args(bool(user and user["is_admin"])))
         else:
             client_id, outcome = await google.finish_connect(database, pending, code, error)
@@ -386,92 +380,92 @@ def create_app(db: Database | None = None) -> FastAPI:
         response.delete_cookie(google.STATE_COOKIE, path="/api/")
         return response
 
+    @app.get("/api/clients/{client_id}/connections/google")
+    def google_status(client_id: int, a: Access = Depends(require("client.view"))) -> dict[str, Any]:
+        return google.status(repo(a))
+
+    @app.post("/api/clients/{client_id}/connections/google/start")
+    def google_start(client_id: int, response: Response, a: Access = Depends(require("google.manage"))) -> dict[str, str]:
+        url, state = google.start_connect(database, client_id, a.actor)
+        _set_state_cookie(response, state)
+        return {"auth_url": url}
+
     @app.get("/api/clients/{client_id}/connections/google/properties")
-    async def google_properties(client_id: int, c: Caller = Depends(caller)) -> dict[str, Any]:
-        return await google.list_properties(repo_for(client_id))
+    async def google_properties(client_id: int, a: Access = Depends(require("google.manage"))) -> dict[str, Any]:
+        return await google.list_properties(repo(a))
 
     @app.patch("/api/clients/{client_id}/connections/google")
-    async def google_select(client_id: int, body: GoogleSelectIn, c: Caller = Depends(caller)) -> dict[str, Any]:
-        return await google.select(repo_for(client_id), c.actor, body.gsc_site, body.ga4_property)
+    async def google_select(client_id: int, body: GoogleSelectIn, a: Access = Depends(require("google.manage"))) -> dict[str, Any]:
+        return await google.select(repo(a), a.actor, body.gsc_site, body.ga4_property)
 
     @app.delete("/api/clients/{client_id}/connections/google")
-    async def google_disconnect(client_id: int, c: Caller = Depends(caller)) -> dict[str, Any]:
-        return await google.disconnect(repo_for(client_id), c.actor)
+    async def google_disconnect(client_id: int, a: Access = Depends(require("google.manage"))) -> dict[str, Any]:
+        return await google.disconnect(repo(a), a.actor)
 
     @app.get("/api/clients/{client_id}/google/search-console")
-    async def google_search_console(client_id: int, days: int = 28, c: Caller = Depends(caller)) -> dict[str, Any]:
-        return await google.search_console_report(repo_for(client_id), max(1, min(days, 480)))
+    async def google_search_console(client_id: int, days: int = 28, a: Access = Depends(require("client.view"))) -> dict[str, Any]:
+        return await google.search_console_report(repo(a), max(1, min(days, 480)))
 
     @app.get("/api/clients/{client_id}/google/analytics")
-    async def google_analytics(client_id: int, days: int = 28, c: Caller = Depends(caller)) -> dict[str, Any]:
-        return await google.analytics_report(repo_for(client_id), max(1, min(days, 480)))
+    async def google_analytics(client_id: int, days: int = 28, a: Access = Depends(require("client.view"))) -> dict[str, Any]:
+        return await google.analytics_report(repo(a), max(1, min(days, 480)))
 
     @app.post("/api/clients/{client_id}/google/pagespeed")
-    async def google_pagespeed(client_id: int, body: PageSpeedIn, c: Caller = Depends(caller)) -> dict[str, Any]:
-        staff_only(c)
-        return await google.pagespeed(repo_for(client_id), str(body.url) if body.url else None, body.strategy)
+    async def google_pagespeed(client_id: int, body: PageSpeedIn, a: Access = Depends(require("work.run"))) -> dict[str, Any]:
+        return await google.pagespeed(repo(a), str(body.url) if body.url else None, body.strategy)
 
-    # ---------- reporting, log, export, ops ----------
+    # ---------- reporting, log, export ----------
     @app.get("/api/clients/{client_id}/report", response_class=HTMLResponse)
-    async def report(client_id: int, c: Caller = Depends(caller)) -> str:
-        return await services.report_html(repo_for(client_id), get_writer())
+    async def report(client_id: int, a: Access = Depends(require("client.view"))) -> str:
+        return await services.report_html(repo(a), get_writer())
 
     @app.get("/api/clients/{client_id}/audit-log")
-    def audit_log(client_id: int, c: Caller = Depends(caller)) -> list[dict[str, Any]]:
-        return repo_for(client_id).list("audit_events", order="id DESC")[:200]
+    def audit_log(client_id: int, a: Access = Depends(require("client.view"))) -> list[dict[str, Any]]:
+        return repo(a).list("audit_events", order="id DESC")[:200]
 
     @app.post("/api/clients/{client_id}/alerts/{alert_id}/ack")
-    def ack(client_id: int, alert_id: int, c: Caller = Depends(caller)) -> dict[str, bool]:
-        repo = repo_for(client_id)
-        if repo.get("alerts", alert_id) is None:
+    def ack(client_id: int, alert_id: int, a: Access = Depends(require("client.view"))) -> dict[str, bool]:
+        r = repo(a)
+        if r.get("alerts", alert_id) is None:
             raise LookupError(f"Alert {alert_id} was not found.")
-        repo.update("alerts", alert_id, acknowledged=1)
+        r.update("alerts", alert_id, acknowledged=True)
         return {"ok": True}
 
     @app.get("/api/clients/{client_id}/export")
-    def export(client_id: int, c: Caller = Depends(caller)) -> dict[str, Any]:
-        repo = repo_for(client_id)
-        repo.log(c.actor, "data.exported", f"client:{client_id}")
-        return {"client": repo.client(), "exported_at": now(),
-                "sites": [repo.public_site()],
-                **{t: repo.list(t) for t in ("findings", "change_requests", "prompts", "ai_observations",
-                                             "audit_events", "usage_events")}}
+    def export(client_id: int, a: Access = Depends(require("client.export"))) -> dict[str, Any]:
+        r = repo(a)
+        r.log(a.actor, "data.exported", f"client:{client_id}", actor_user_id=a.user_id)
+        return {"client": r.client(), "exported_at": now(),
+                "sites": [r.public_site()],
+                **{t: r.list(t) for t in ("findings", "change_requests", "prompts", "ai_observations",
+                                          "audit_events", "usage_events")}}
 
-    @app.get("/api/ops/usage")
-    def usage(c: Caller = Depends(caller)) -> list[dict[str, Any]]:
-        staff_only(c)
-        return database.query("SELECT client_id, vendor, SUM(qty) AS qty, ROUND(SUM(cost_usd), 4) AS cost_usd "
-                              "FROM usage_events GROUP BY client_id, vendor ORDER BY client_id, cost_usd DESC")
+    # ---------- demo controls (development only) ----------
+    if not settings.is_production:
+        @app.post("/api/demo/reset")
+        async def demo_reset(a: Access = Depends(require("admin"))) -> dict[str, Any]:
+            async with make_client() as client:
+                try:
+                    await client.post(settings.demo_site_url + "/__demo/reset")
+                except httpx.HTTPError:
+                    raise HTTPException(502, f"The demo website is not running at {settings.demo_site_url}. Start it with start.bat and try again.")
+            database.wipe()
+            seed_demo(database)
+            return {"ok": True}
 
-    # ---------- demo controls (local only) ----------
-    @app.post("/api/demo/reset")
-    async def demo_reset(c: Caller = Depends(caller)) -> dict[str, Any]:
-        staff_only(c)
-        async with make_client() as client:
-            try:
-                await client.post(settings.demo_site_url + "/__demo/reset")
-            except httpx.HTTPError as exc:
-                raise HTTPException(502, f"The demo website is not running at {settings.demo_site_url}. Start it with start.bat and try again.")
-        database.wipe()
-        seed_demo(database)
-        return {"ok": True}
-
-
-    @app.post("/api/demo/fault")
-    async def demo_fault(body: FaultIn, c: Caller = Depends(caller)) -> dict[str, Any]:
-        staff_only(c)
-        async with make_client() as client:
-            resp = await client.post(settings.demo_site_url + "/__demo/fault", json={"on": body.on})
-        return resp.json()
+        @app.post("/api/demo/fault")
+        async def demo_fault(body: FaultIn, a: Access = Depends(require("admin"))) -> dict[str, Any]:
+            async with make_client() as client:
+                resp = await client.post(settings.demo_site_url + "/__demo/fault", json={"on": body.on})
+            return resp.json()
 
     if STATIC_DIR.joinpath("index.html").exists():
         app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="portal")
     else:
         @app.get("/", response_class=HTMLResponse)
         def no_portal() -> str:
-            return ("<h1>SEO Platform API is running</h1><p>The portal has not been built yet. "
-                    "Run <code>npm install && npm run build</code> in the frontend folder, or open "
-                    "<a href='/docs'>/docs</a> for the API.</p>")
+            return ("<h1>SEOSys API is running</h1><p>The portal has not been built yet. "
+                    "Run <code>npm install && npm run build</code> in the frontend folder.</p>")
     return app
 
 

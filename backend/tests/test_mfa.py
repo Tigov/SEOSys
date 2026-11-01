@@ -6,6 +6,12 @@ from seo_platform import clock
 from tests.conftest import GOOD_PASSWORD, login
 
 
+@pytest.fixture()
+def api(bare_api):
+    """These tests start with no accounts at all."""
+    return bare_api
+
+
 def code_for(secret: str, offset_steps: int = 0) -> str:
     return pyotp.TOTP(secret).at(clock.now().timestamp() + 30 * offset_steps)
 

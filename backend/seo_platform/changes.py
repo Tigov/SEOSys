@@ -48,7 +48,7 @@ def _set(repo: ClientRepo, cr: dict[str, Any], actor: str, action: str, status: 
 
 def check_role(action: str, role: str) -> None:
     if role not in ROLE_ACTIONS.get(action, set()):
-        raise PermissionError(f"The {'strategist' if role == 'staff' else 'client owner'} cannot {action} changes. " + ("Switch to Client owner to approve or reject." if action in ("approve", "reject") else "Switch to Strategist to do this."))
+        raise PermissionError(f"You don't have permission to {action} changes.")
 
 
 def transition(repo: ClientRepo, cr_id: int, action: str, actor: str, role: str) -> dict[str, Any]:
