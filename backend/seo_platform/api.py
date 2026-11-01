@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, HttpUrl
 
 from . import changes as change_svc
-from . import mailer, services, team, visibility
+from . import billing, maintenance, mailer, services, team, visibility
 from .adapters import google
 from .adapters.llm import get_writer
 from .adapters.site_wp import AdapterError, WordPressAdapter
@@ -30,6 +30,7 @@ from .db import ClientRepo, Database, now
 from .fixes import propose_for_finding
 from .net import BlockedHostError, make_client
 from .permissions import ACTIONS, CHANGE_ACTIONS, STATUS_ALLOWS, Access, require
+from .plans import PLANS
 
 log = logging.getLogger("seo_platform")
 STATIC_DIR = Path(__file__).with_name("static")
@@ -98,6 +99,11 @@ class TransferIn(BaseModel):
     user_id: int
 
 
+class CheckoutIn(BaseModel):
+    plan: str = Field(max_length=40)
+    business_name: str = Field(max_length=200)
+
+
 class PageSpeedIn(BaseModel):
     url: HttpUrl | None = None
     strategy: Literal["mobile", "desktop"] = "mobile"
@@ -122,6 +128,16 @@ async def _send_mail_forever(database: Database) -> None:
         await asyncio.sleep(5)
 
 
+async def _maintain_forever(database: Database) -> None:
+    """Hourly housekeeping (production runs `python -m seo_platform maintenance` on a scheduler instead)."""
+    while True:
+        try:
+            await asyncio.to_thread(maintenance.run, database)
+        except Exception:
+            log.exception("maintenance failed")
+        await asyncio.sleep(3600)
+
+
 def _set_state_cookie(response: Response, state: str) -> None:
     response.set_cookie(google.STATE_COOKIE, state, max_age=google.STATE_TTL_SECONDS, httponly=True, samesite="lax",
                         path="/api/", secure=settings.is_production or settings.app_base_url.startswith("https://"))
@@ -132,12 +148,13 @@ def create_app(db: Database | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-        if not settings.is_production:
-            seed_demo(database)
-        sender = None if settings.is_test else asyncio.create_task(_send_mail_forever(database))
+        if settings.is_test:
+            seed_demo(database)  # development seeds through `python -m seo_platform seed --demo` (start.bat)
+        tasks = [] if settings.is_test else [asyncio.create_task(_send_mail_forever(database)),
+                                             asyncio.create_task(_maintain_forever(database))]
         yield
-        if sender:
-            sender.cancel()
+        for task in tasks:
+            task.cancel()
 
     app = FastAPI(title=settings.app_name, lifespan=lifespan,
                   docs_url=None if settings.is_production else "/docs", redoc_url=None,
@@ -164,6 +181,10 @@ def create_app(db: Database | None = None) -> FastAPI:
     # ---------- error mapping ----------
     @app.exception_handler(AuthError)
     async def auth_error(_: Request, exc: AuthError) -> JSONResponse:
+        return JSONResponse({"detail": str(exc)}, status_code=exc.status)
+
+    @app.exception_handler(billing.BillingError)
+    async def billing_error(_: Request, exc: billing.BillingError) -> JSONResponse:
         return JSONResponse({"detail": str(exc)}, status_code=exc.status)
 
     @app.exception_handler(LookupError)
@@ -426,6 +447,34 @@ def create_app(db: Database | None = None) -> FastAPI:
     @app.post("/api/clients/{client_id}/google/pagespeed")
     async def google_pagespeed(client_id: int, body: PageSpeedIn, a: Access = Depends(require("work.run"))) -> dict[str, Any]:
         return await google.pagespeed(repo(a), str(body.url) if body.url else None, body.strategy)
+
+    # ---------- billing ----------
+    @app.get("/api/plans")
+    def plans(a: Access = Depends(require("public"))) -> list[dict[str, Any]]:
+        return [p.public() for p in PLANS.values()]
+
+    @app.post("/api/billing/checkout")
+    def checkout(body: CheckoutIn, a: Access = Depends(require("billing.buy"))) -> dict[str, str]:
+        return {"url": billing.start_checkout(database, a, body.plan, body.business_name)}
+
+    @app.post("/api/billing/webhook")
+    async def stripe_webhook(request: Request, a: Access = Depends(require("public"))) -> dict[str, str]:
+        # Verified by Stripe's signature, not by a session (it is exempt from the CSRF check).
+        event = billing.parse_event(await request.body(), request.headers.get("stripe-signature"))
+        return {"result": await asyncio.to_thread(billing.handle_event, database, event)}
+
+    @app.get("/api/clients/{client_id}/billing")
+    def billing_summary(client_id: int, a: Access = Depends(require("billing.manage"))) -> dict[str, Any]:
+        return billing.summary(database, client_id)
+
+    @app.post("/api/clients/{client_id}/billing/portal")
+    def billing_portal(client_id: int, a: Access = Depends(require("billing.manage"))) -> dict[str, str]:
+        return {"url": billing.portal_url(database, a)}
+
+    @app.post("/api/admin/clients/{client_id}/activate")
+    def activate(client_id: int, a: Access = Depends(require("admin"))) -> dict[str, Any]:
+        billing.activate_manually(database, a, client_id)
+        return database.get_client(client_id) or {}
 
     # ---------- team ----------
     @app.get("/api/clients/{client_id}/team")

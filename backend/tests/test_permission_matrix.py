@@ -62,6 +62,8 @@ def expected(who: str, action: str, status: str) -> str:
         return "hidden"
     if role == "other_owner":
         role = "owner"
+    if action not in CLIENT_SCOPED and role in ("member", "approver"):
+        role = "no_package"  # outside a client, a member is just someone who owns no client yet
     if role not in ACTIONS[action]:
         return "forbidden"
     if action in CLIENT_SCOPED and (role != "admin" or action == "work.run"):
