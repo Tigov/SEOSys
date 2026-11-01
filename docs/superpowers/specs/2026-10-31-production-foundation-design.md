@@ -56,9 +56,12 @@ starts the server.
   `UNIQUE (client_id)`.
 - All queries are parameterised through SQLAlchemy Core. No string-built SQL except identifiers from a
   fixed allow-list.
-- Every request runs in one transaction; multi-step writes (checkout completion, invite acceptance,
-  ownership transfer) are atomic. Idempotency inserts use `ON CONFLICT DO NOTHING` inside the same
-  transaction as their effects.
+- Single statements commit on their own. Multi-step writes (sign-up, checkout completion, invite
+  acceptance, ownership transfer, password reset) run inside an explicit `db.transaction()` block and are
+  atomic. No transaction is held open across a call to an outside service (Google, Stripe, a client's
+  website), so a slow site never holds database locks. Idempotency inserts use `ON CONFLICT DO NOTHING`
+  inside the same transaction as their effects.
+- Boolean flags are `boolean`, not integers.
 - Connection pooling via the SQLAlchemy engine (`pool_pre_ping`, sized from env). The app connects as
   `seosys_app`, which owns no tables and has only `SELECT/INSERT/UPDATE/DELETE`; `audit_events` is
   append-only (no `UPDATE`/`DELETE` granted). Migrations run as the owner role `seosys_owner`.
@@ -123,10 +126,14 @@ sends mail and a mail outage never loses one.
 
 ### Row-level security
 
-Every client-owned table has a policy `client_id = current_setting('app.client_id')::bigint`, or the
-admin bypass `current_setting('app.is_admin') = 'on'`. The app connects as a non-owner role `seosys_app`
-so policies apply. `ClientRepo` sets both settings at the start of each transaction (`SET LOCAL`).
-Code-level filtering by `client_id` stays, so a missing setting fails closed rather than leaking.
+Every client-owned table has a policy
+`client_id = nullif(current_setting('app.client_id', true), '')::bigint`, or the system bypass
+`current_setting('app.scope', true) = 'system'`. The app connects as a non-owner role `seosys_app` so
+policies apply. `ClientRepo` runs every statement with `app.client_id` set (transaction-local
+`set_config(..., true)`) and no system scope; agency-level code in `Database` (admin pages, the
+maintenance job, webhooks) runs with `app.scope = 'system'`. With neither setting, a query sees no
+client rows, so a missing setting fails closed. Code-level filtering by `client_id` stays as the first
+layer.
 
 ## 5. Accounts and sessions
 
