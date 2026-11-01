@@ -530,3 +530,4 @@ input:focus-visible, select:focus-visible { border-color: var(--ink); }
   .steps { grid-template-columns: 1fr; }
   .codes { columns: 1; }
 }
+.qr { display: block; margin: 10px 0; border: 1px solid var(--rule); border-radius: var(--r-sm); background: #fff; }

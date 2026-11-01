@@ -31,6 +31,7 @@ class BillingError(Exception):
 class Gateway(Protocol):
     def checkout(self, params: dict[str, Any]) -> str: ...
     def portal(self, customer_id: str, return_url: str) -> str: ...
+    def session(self, session_id: str) -> dict[str, Any]: ...
 
 
 class StripeGateway:
@@ -46,6 +47,9 @@ class StripeGateway:
         session = self._client().v1.billing_portal.sessions.create(
             params={"customer": customer_id, "return_url": return_url})
         return session.url
+
+    def session(self, session_id: str) -> dict[str, Any]:
+        return self._client().v1.checkout.sessions.retrieve(session_id).to_dict()
 
 
 gateway: Gateway = StripeGateway()
@@ -70,7 +74,7 @@ def start_checkout(db: Database, a: Access, plan_id: str, business_name: str) ->
     params: dict[str, Any] = {
         "mode": plan.mode, "line_items": [{"price": plan.price_id, "quantity": 1}],
         "customer_email": a.principal.email, "client_reference_id": str(a.principal.user_id), "metadata": meta,
-        "success_url": f"{settings.app_base_url}/?checkout=done#/welcome",
+        "success_url": f"{settings.app_base_url}/?checkout=done&session_id={{CHECKOUT_SESSION_ID}}#/welcome",
         "cancel_url": f"{settings.app_base_url}/?checkout=cancelled#/packages",
     }
     if plan.mode == "subscription":
@@ -81,6 +85,24 @@ def start_checkout(db: Database, a: Access, plan_id: str, business_name: str) ->
     db.log(None, a.actor, "billing.checkout_started", f"user:{a.principal.user_id}", {"plan": plan.id},
            actor_user_id=a.principal.user_id)
     return url
+
+
+def confirm_checkout(db: Database, a: Access, session_id: str) -> int | None:
+    """When Stripe sends the buyer back, ask Stripe directly whether the checkout finished and set up the account
+    straight away rather than waiting for the webhook. Safe to repeat, and safe alongside the webhook: both create the
+    client only once. Returns the client id, or None if the payment isn't complete yet."""
+    assert a.principal is not None
+    if not session_id.startswith("cs_") or len(session_id) > 255:
+        raise BillingError("That checkout wasn't found.", 404)
+    obj = gateway.session(session_id)
+    if str(obj.get("client_reference_id")) != str(a.principal.user_id):
+        raise BillingError("That checkout belongs to someone else.", 403)
+    if obj.get("status") != "complete":
+        return None
+    with db.transaction():
+        _checkout_completed(db, obj)
+    row = db.one("SELECT id FROM clients WHERE stripe_customer_id = ?", (obj.get("customer"),))
+    return int(row["id"]) if row else None
 
 
 def portal_url(db: Database, a: Access) -> str:

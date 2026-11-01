@@ -145,7 +145,7 @@ function groups(secret: string) {
 
 export function TwoStepSetup({ required, onDone }: { required?: boolean; onDone?: () => void }) {
   const { refresh } = useAuth();
-  const [setup, setSetup] = useState<{ otpauth_uri: string; secret: string } | null>(null);
+  const [setup, setSetup] = useState<{ otpauth_uri: string; secret: string; qr: string } | null>(null);
   const [codes, setCodes] = useState<string[] | null>(null);
   const [code, setCode] = useState("");
   const begin = useSubmit(async () => setSetup(await post("/api/auth/mfa/setup")));
@@ -171,8 +171,14 @@ export function TwoStepSetup({ required, onDone }: { required?: boolean; onDone?
         <form onSubmit={confirm.onSubmit} className="form" data-testid="mfa-setup-form">
           <ol className="setup-steps">
             <li>{A.mfa.step1}</li>
-            <li>{A.mfa.step2} <code className="secret" data-testid="mfa-secret">{groups(setup.secret)}</code>
-              <span className="field-hint"> <a href={setup.otpauth_uri}>{A.mfa.openApp}</a></span></li>
+            <li>{A.mfa.scan}
+              <img className="qr" src={setup.qr} width={220} height={220} alt={A.mfa.qrAlt} data-testid="mfa-qr" />
+              <details className="field-hint">
+                <summary>{A.mfa.cantScan}</summary>
+                {A.mfa.step2} <code className="secret" data-testid="mfa-secret">{groups(setup.secret)}</code>{" "}
+                <a href={setup.otpauth_uri}>{A.mfa.openApp}</a>
+              </details>
+            </li>
             <li>{A.mfa.step3}</li>
           </ol>
           <Field id="code" label={A.mfa.codeLabel} value={code} onChange={(e) => setCode(e.target.value)} required
@@ -181,6 +187,27 @@ export function TwoStepSetup({ required, onDone }: { required?: boolean; onDone?
           <button type="submit" className="btn btn-primary btn-wide" disabled={confirm.busy} data-testid="mfa-enable">{A.mfa.turnOn}</button>
         </form>
       )}
+    </AuthCard>
+  );
+}
+
+// ---------- confirm your email (shown until the address is confirmed) ----------
+
+export function ConfirmEmailGate() {
+  const { me, refresh, logout } = useAuth();
+  const toast = useToast();
+  const local = ["localhost", "127.0.0.1"].includes(window.location.hostname);
+  const resend = async () => {
+    try { await post("/api/auth/verify/resend"); toast("ok", A.page.resent); } catch (e) { toast("error", (e as Error).message); }
+  };
+  return (
+    <AuthCard title={A.confirm.title} lede={A.confirm.lede(me?.user.email ?? "")}
+      foot={<button type="button" className="link-btn" onClick={logout} data-testid="confirm-logout">{A.mfa.notYou}</button>}>
+      {local && <p className="notice notice-attn">{A.confirm.local} <a href="http://localhost:8025" target="_blank" rel="noreferrer">localhost:8025</a></p>}
+      <div className="row">
+        <button type="button" className="btn btn-primary" onClick={() => refresh()} data-testid="confirm-done">{A.confirm.done}</button>
+        <button type="button" className="btn btn-secondary" onClick={resend} data-testid="confirm-resend">{A.page.resend}</button>
+      </div>
     </AuthCard>
   );
 }

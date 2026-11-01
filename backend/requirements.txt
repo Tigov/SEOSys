@@ -11,3 +11,4 @@ argon2-cffi>=23.1
 pyotp>=2.9
 cryptography>=43
 stripe>=11
+segno>=1.6

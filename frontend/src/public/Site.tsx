@@ -266,7 +266,12 @@ export function TextPage({ page }: { page: keyof typeof SITE.pages }) {
 export function Welcome() {
   const { me, refresh } = useAuth();
   const ready = !!me?.memberships.length;
-  // Stripe tells us about the payment a few seconds after it sends you back, so wait for your account to appear.
+  // Ask Stripe straight away whether the payment went through; the webhook may arrive later (or, locally, never).
+  useEffect(() => {
+    const sessionId = new URLSearchParams(window.location.search).get("session_id");
+    if (sessionId) post("/api/billing/confirm", { session_id: sessionId }).then(() => refresh()).catch(() => {});
+  }, [refresh]);
+  // Otherwise keep checking for a little while until the account appears.
   useEffect(() => {
     if (ready) return;
     let tries = 0;

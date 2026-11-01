@@ -31,7 +31,9 @@ def with_mfa(api, make_user):
 def test_setup_gives_otpauth_uri(api, make_user):
     make_user("sam@example.com")
     login(api, "sam@example.com")
-    uri = api.post("/api/auth/mfa/setup").json()["otpauth_uri"]
+    setup = api.post("/api/auth/mfa/setup").json()
+    uri = setup["otpauth_uri"]
+    assert setup["qr"].startswith("data:image/svg+xml") and setup["secret"] not in setup["qr"]
     assert uri.startswith("otpauth://totp/SEOSys:sam%40example.com?") and "issuer=SEOSys" in uri
 
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 import pyotp
+import segno
 
 from .. import clock, mailer
 from ..config import settings
@@ -57,7 +58,9 @@ def setup(db: Database, principal: sessions.Principal) -> dict[str, str]:
     secret = pyotp.random_base32()
     db.update_row("users", "id = ?", (principal.user_id,), {"totp_secret": secret})
     uri = pyotp.TOTP(secret).provisioning_uri(name=principal.email, issuer_name=settings.app_name)
-    return {"otpauth_uri": uri, "secret": secret}
+    # Drawn here so the secret never goes to a third-party QR service. Dark on white with a quiet zone, so phones read it.
+    qr = segno.make(uri, error="m").svg_data_uri(scale=5, border=4, dark="#13282e", light="#ffffff")
+    return {"otpauth_uri": uri, "secret": secret, "qr": qr}
 
 
 def enable(db: Database, principal: sessions.Principal, code: str, ip: str | None, user_agent: str) -> tuple[list[str], str]:
@@ -151,9 +154,11 @@ def remaining_codes(db: Database, user_id: int) -> int:
 
 
 def gate(principal: sessions.Principal) -> str | None:
-    """What stands between this session and the app: 'mfa_required', 'mfa_setup_required', or None."""
+    """What stands between this session and the app: 'mfa_required', 'email_unverified', 'mfa_setup_required', or None."""
     if principal.totp_enabled and not principal.mfa_passed:
         return "mfa_required"
+    if not principal.email_verified:
+        return "email_unverified"
     if principal.is_admin and not principal.totp_enabled:
         return "mfa_setup_required"
     return None

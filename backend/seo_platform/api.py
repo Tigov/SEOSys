@@ -112,6 +112,10 @@ class CheckoutIn(BaseModel):
     business_name: str = Field(max_length=200)
 
 
+class ConfirmIn(BaseModel):
+    session_id: str = Field(max_length=255)
+
+
 class PageSpeedIn(BaseModel):
     url: HttpUrl | None = None
     strategy: Literal["mobile", "desktop"] = "mobile"
@@ -500,6 +504,10 @@ def create_app(db: Database | None = None) -> FastAPI:
     @app.post("/api/billing/checkout")
     def checkout(body: CheckoutIn, a: Access = Depends(require("billing.buy"))) -> dict[str, str]:
         return {"url": billing.start_checkout(database, a, body.plan, body.business_name)}
+
+    @app.post("/api/billing/confirm")
+    def confirm_checkout(body: ConfirmIn, a: Access = Depends(require("account"))) -> dict[str, int | None]:
+        return {"client_id": billing.confirm_checkout(database, a, body.session_id)}
 
     @app.post("/api/billing/webhook")
     async def stripe_webhook(request: Request, a: Access = Depends(require("public"))) -> dict[str, str]:

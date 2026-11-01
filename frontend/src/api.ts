@@ -72,7 +72,7 @@ export type ClientStatus = "active" | "past_due" | "cancelled" | "closed";
 export interface Me {
   user: { id: number; email: string; name: string; is_admin: boolean; email_verified: boolean; totp_enabled: boolean };
   mfa_passed: boolean; csrf_token: string; memberships: Membership[];
-  gate: "mfa_required" | "mfa_setup_required" | null; recovery_codes_left: number | null;
+  gate: "mfa_required" | "email_unverified" | "mfa_setup_required" | null; recovery_codes_left: number | null;
 }
 export interface Plan { id: string; name: string; mode: "subscription" | "payment"; price_label: string; summary: string; includes: string[]; available: boolean }
 export interface SessionRow { id: string; current: boolean; created_at: string; last_seen_at: string; ip: string | null; user_agent: string }

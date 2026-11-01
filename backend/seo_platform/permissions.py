@@ -126,8 +126,8 @@ def require(action: str) -> Callable[..., Access]:
             return Access(principal, role_in(db, principal, None)[0])
         if principal is None:
             raise HTTPException(401, "Please log in.")
-        if gate := mfa.gate(principal):
-            raise HTTPException(403, gate)
+        if (gate := mfa.gate(principal)) and not (gate == "email_unverified" and action == "account"):
+            raise HTTPException(403, gate)  # an unconfirmed person may still accept an invitation (it confirms them)
         client_id = None
         if action in CLIENT_SCOPED:
             raw = request.path_params.get("client_id")
@@ -142,8 +142,6 @@ def require(action: str) -> Callable[..., Access]:
                 raise HTTPException(403, "mfa_setup_required")
         access = Access(principal, role, client_id, client, ClientRepo(db, client_id) if client_id is not None else None)
         access.check(action)
-        if action == "billing.buy" and not principal.email_verified:
-            raise HTTPException(403, "Confirm your email address first. We sent you a link when you signed up.")
         return access
 
     dependency.action = action  # type: ignore[attr-defined]  # read by the route-coverage test

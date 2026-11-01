@@ -3,6 +3,9 @@
   seed [--demo]   Create the admin account from SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD. With --demo (never in
                   production) also create the demo client and one demo person for each client role.
   maintenance     Run the housekeeping job once (see maintenance.py).
+  stripe-setup [--write-env PATH]
+                  Create the packages in a Stripe *test* account (skips any that exist) and print their price IDs,
+                  or write them into the .env file at PATH. Refuses live keys.
 """
 from __future__ import annotations
 
@@ -50,13 +53,49 @@ def seed(db: Database, demo: bool) -> list[str]:
     return done
 
 
+def stripe_setup(write_env: str | None) -> dict[str, str]:
+    import stripe
+
+    from .plans import PLANS
+
+    if not settings.stripe_secret_key.startswith("sk_test_"):
+        raise SystemExit("stripe-setup only works with a test key (sk_test_...).")
+    client = stripe.StripeClient(settings.stripe_secret_key)
+    found: dict[str, str] = {}
+    for plan in PLANS.values():
+        key = f"seosys_{plan.id}"
+        existing = client.v1.prices.list(params={"lookup_keys": [key], "limit": 1}).data
+        if existing:
+            found[plan.price_env] = existing[0].id
+            continue
+        product = client.v1.products.create(params={"name": f"SEOSys {plan.name}", "description": plan.summary,
+                                                    "metadata": {"seosys_plan": plan.id}})
+        price: dict = {"product": product.id, "currency": "usd", "unit_amount": plan.amount_cents, "lookup_key": key}
+        if plan.mode == "subscription":
+            price["recurring"] = {"interval": "month"}
+        found[plan.price_env] = client.v1.prices.create(params=price).id  # type: ignore[arg-type]
+    if write_env:
+        lines = open(write_env, encoding="utf-8").read().splitlines()
+        lines = [l for l in lines if l.split("=", 1)[0].strip() not in found]
+        lines += [f"{k}={v}" for k, v in found.items()]
+        with open(write_env, "w", encoding="utf-8") as fh:
+            fh.write("\n".join(lines) + "\n")
+    return found
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m seo_platform")
     sub = parser.add_subparsers(dest="command", required=True)
     seed_cmd = sub.add_parser("seed")
     seed_cmd.add_argument("--demo", action="store_true")
     sub.add_parser("maintenance")
+    stripe_cmd = sub.add_parser("stripe-setup")
+    stripe_cmd.add_argument("--write-env")
     args = parser.parse_args(argv)
+    if args.command == "stripe-setup":
+        for name, price in stripe_setup(args.write_env).items():
+            print(f"{name}={price}")
+        return 0
     db = Database(settings.database_url)
     try:
         if args.command == "seed":

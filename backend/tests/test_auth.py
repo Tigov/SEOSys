@@ -281,3 +281,14 @@ def test_last_seen_written_at_most_once_a_minute(api, db, make_user):
     clock.advance(seconds=31)
     api.get("/api/auth/me")
     assert db.one("SELECT last_seen_at FROM sessions")["last_seen_at"] != first
+
+
+def test_unconfirmed_email_can_log_in_but_only_sees_the_confirm_page(api, make_user, db):
+    make_user("sam@example.com", verified=False)
+    login(api, "sam@example.com")
+    assert api.get("/api/auth/me").json()["gate"] == "email_unverified"
+    r = api.post("/api/billing/checkout", json={"plan": "local", "business_name": "Sam Co"})
+    assert r.status_code == 403 and r.json()["detail"] == "email_unverified"
+    assert api.post("/api/auth/verify/resend").status_code == 202
+    db.execute("UPDATE users SET email_verified_at = now()")
+    assert api.get("/api/auth/me").json()["gate"] is None

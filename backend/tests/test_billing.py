@@ -15,7 +15,10 @@ SECRET = "whsec_test_secret"
 
 class FakeStripe:
     def __init__(self):
-        self.checkouts, self.portals = [], []
+        self.checkouts, self.portals, self.sessions = [], [], {}
+
+    def session(self, session_id):
+        return self.sessions[session_id]
 
     def checkout(self, params):
         self.checkouts.append(params)
@@ -77,7 +80,7 @@ def test_checkout_requires_verified_email(api, make_user, stripe_fake):
     browser.identities = {}
     login(browser, "new@example.com")
     r = browser.post("/api/billing/checkout", json={"plan": "local", "business_name": "New Co"})
-    assert r.status_code == 403 and "Confirm your email" in r.json()["detail"]
+    assert r.status_code == 403 and r.json()["detail"] == "email_unverified"
 
 
 def test_checkout_sends_buyer_to_stripe(buyer, stripe_fake):
@@ -220,3 +223,40 @@ def test_seed_refuses_demo_in_production(db, override):
     override(app_env="production")
     with pytest.raises(SystemExit):
         seed(db, demo=True)
+
+
+def _session(user_id, status="complete"):
+    return {"id": "cs_test_1", "status": status, "customer": "cus_1", "subscription": "sub_1",
+            "client_reference_id": str(user_id),
+            "metadata": {"user_id": str(user_id), "plan": "local", "business_name": "Sam's Plumbing"}}
+
+
+def test_return_from_stripe_sets_up_account_without_webhook(api, buyer, stripe_fake, db):
+    uid, browser = buyer
+    stripe_fake.sessions["cs_test_1"] = _session(uid)
+    r = browser.post("/api/billing/confirm", json={"session_id": "cs_test_1"})
+    client_id = r.json()["client_id"]
+    assert r.status_code == 200 and db.get_client(client_id)["plan"] == "local"
+    assert browser.post("/api/billing/confirm", json={"session_id": "cs_test_1"}).json() == {"client_id": client_id}
+    assert post_event(api, completed(uid)).json() == {"result": "already_created"}  # the late webhook changes nothing
+    assert db.one("SELECT count(*) AS n FROM clients WHERE stripe_customer_id = 'cus_1'")["n"] == 1
+
+
+def test_confirm_unfinished_checkout_waits(buyer, stripe_fake):
+    uid, browser = buyer
+    stripe_fake.sessions["cs_test_1"] = _session(uid, status="open")
+    assert browser.post("/api/billing/confirm", json={"session_id": "cs_test_1"}).json() == {"client_id": None}
+
+
+def test_cannot_confirm_someone_elses_checkout(buyer, stripe_fake):
+    _, browser = buyer
+    stripe_fake.sessions["cs_test_1"] = _session(999)
+    assert browser.post("/api/billing/confirm", json={"session_id": "cs_test_1"}).status_code == 403
+    assert browser.post("/api/billing/confirm", json={"session_id": "not-a-session"}).status_code == 404
+
+
+def test_stripe_setup_refuses_live_keys(override):
+    from seo_platform.__main__ import stripe_setup
+    override(stripe_secret_key="sk_live_nope")
+    with pytest.raises(SystemExit):
+        stripe_setup(None)

@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { api, post, type Client } from "./api";
-import { AcceptInvite, AccountPage, Forgot, LinkGoogle, LogIn, Reset, SignUp, TwoStepCheck, TwoStepSetup, Verify } from "./account/Account";
+import { AcceptInvite, AccountPage, ConfirmEmailGate, Forgot, LinkGoogle, LogIn, Reset, SignUp, TwoStepCheck, TwoStepSetup, Verify } from "./account/Account";
 import { AdminPeople } from "./admin/Admin";
 import { homeFor, useAuth } from "./auth";
 import { useLoad, useToast } from "./components/ui";
@@ -130,6 +130,8 @@ export function App() {
   if (!ready) return <div className="loading center">{PORTAL.loading}</div>;
 
   if (me?.gate === "mfa_required") return <SiteLayout hash={hash}><TwoStepCheck /></SiteLayout>;
+  const confirmLink = path === "#/verify" || path === "#/invite";  // these pages confirm the address themselves
+  if (me?.gate === "email_unverified" && !confirmLink) return <SiteLayout hash={hash}><ConfirmEmailGate /></SiteLayout>;
   if (me?.gate === "mfa_setup_required") return <SiteLayout hash={hash}><TwoStepSetup required /></SiteLayout>;
 
   const portalPath = /^#\/(clients|admin|account)/.test(path);
