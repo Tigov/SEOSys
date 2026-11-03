@@ -5,6 +5,10 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
+from .rules import AREAS, area_of
+
+ALL_AREAS = frozenset(AREAS)
+
 
 @dataclass(frozen=True)
 class Plan:
@@ -16,6 +20,7 @@ class Plan:
     amount_cents: int  # used only to create test prices (python -m seo_platform stripe-setup)
     summary: str
     includes: tuple[str, ...]
+    covers: frozenset[str]  # the areas of work (rules.AREAS) whose fixes this package makes
     coming_soon: bool = False  # shown on the website, but can't be bought yet
 
     @property
@@ -33,23 +38,41 @@ class Plan:
 
 
 PLANS: dict[str, Plan] = {p.id: p for p in (
-    Plan("audit", "SEO Audit", "STRIPE_PRICE_AUDIT", "payment", "$1,500 one-off", 150000,
-         "A full check of your website and a 90-day plan, so you know exactly what to fix first.",
-         ("Every page checked for technical problems", "Page speed on phones and computers",
-          "A check that AI assistants like ChatGPT can read your website",
-          "Your Google Search Console and Analytics data reviewed", "A 90-day plan in plain English, most important first")),
-    Plan("technical", "Technical SEO", "STRIPE_PRICE_TECHNICAL", "subscription", "$750 a month", 75000,
-         "We check your website every month and fix what's holding it back in Google, with your approval.",
-         ("A full check of every page, every month", "Fixes prepared for you and explained in plain English",
-          "Fixes made on WordPress sites once you approve them, and undone if anything goes wrong",
-          "Step-by-step fixes for other website builders", "AI assistants like ChatGPT kept able to read your website",
-          "Google Search Console and Analytics in one report",
-          "A monthly report on visitors, searches and enquiries")),
+    Plan("technical", "Technical SEO", "STRIPE_PRICE_TECHNICAL", "subscription", "$1,000 a month", 100000,
+         "We keep your website fast, error-free and easy for Google and AI assistants to read.",
+         ("A full check of every page, every month", "Broken links and redirects fixed",
+          "Sitemaps and Google indexing kept right", "AI assistants like ChatGPT kept able to read your website",
+          "Business details marked up so Google understands them", "A monthly report on visitors, searches and enquiries"),
+         frozenset({"technical", "ai_local"})),
+    Plan("onpage", "On-Page SEO", "STRIPE_PRICE_ONPAGE", "subscription", "$1,000 a month", 100000,
+         "We improve what's on each page so Google knows what you offer and people click through.",
+         ("Page titles and search descriptions written for you", "Headings that say what each page is about",
+          "Image descriptions for Google and screen readers", "Thin pages flagged and improved",
+          "A full check of every page, every month", "A monthly report on visitors, searches and enquiries"),
+         frozenset({"onpage"})),
     Plan("local", "Local SEO", "STRIPE_PRICE_LOCAL", "subscription", "$1,000 a month", 100000,
-         "Everything in Technical SEO, plus help showing up on Google Maps and in \"near me\" searches.",
-         ("Everything in Technical SEO", "Google Business Profile kept up to date", "Review monitoring and replies",
-          "Your name, address and phone the same on every directory", "Pages for each area you serve"),
-         coming_soon=True),
+         "Help showing up on Google Maps and in \"near me\" searches.",
+         ("Google Business Profile kept up to date", "Review monitoring and replies",
+          "Your name, address and phone the same on every directory", "Pages for each area you serve",
+          "A monthly report on calls and directions from Google"),
+         frozenset({"ai_local"}), coming_soon=True),
+    Plan("complete", "Complete SEO", "STRIPE_PRICE_COMPLETE", "subscription", "$2,300 a month", 230000,
+         "Everything we do, in one package: Technical SEO and On-Page SEO, with Local SEO added when it launches.",
+         ("Everything in Technical SEO", "Everything in On-Page SEO", "Local SEO included when it launches",
+          "A quarterly review of what's working and what's next", "Save $700 a month against buying them separately"),
+         ALL_AREAS),
+    Plan("audit", "SEO Audit", "STRIPE_PRICE_AUDIT", "payment", "$1,500 one-off", 150000,
+         "A full check of your website and a 90-day plan, so you or your web person know exactly what to fix first.",
+         ("Every page checked for technical and on-page problems", "Page speed on phones and computers",
+          "A check that AI assistants like ChatGPT can read your website",
+          "Your Google Search Console and Analytics data reviewed", "A 90-day plan in plain English, most important first"),
+         frozenset()),
+    Plan("fixup", "SEO Fix-Up", "STRIPE_PRICE_FIXUP", "payment", "$2,500 one-off", 250000,
+         "We check your whole website and fix what we find, once. No monthly commitment.",
+         ("Everything in the SEO Audit", "Technical and on-page fixes made for you, with your approval",
+          "Fixes made on WordPress sites, step-by-step instructions for other builders",
+          "A before-and-after report"),
+         ALL_AREAS),
 )}
 
 # Packages we no longer sell, mapped to what their clients now see.
@@ -60,3 +83,17 @@ def plan_for(plan_id: str | None) -> Plan | None:
     """The package a stored plan id refers to, including retired ones."""
     plan_id = plan_id or ""
     return PLANS.get(RETIRED.get(plan_id, plan_id))
+
+
+def plan_covers(plan_id: str | None, rule_id: str) -> bool:
+    """Whether a client's package includes fixing this kind of problem. Clients without a package were set up by
+    the agency directly, so they get everything."""
+    plan = plan_for(plan_id)
+    return plan is None or area_of(rule_id) in plan.covers
+
+
+def recommend(areas_with_issues: set[str]) -> str:
+    """The cheapest monthly package on sale that fixes every area where problems were found."""
+    on_sale = [p for p in PLANS.values() if p.mode == "subscription" and not p.coming_soon]
+    fits = [p for p in on_sale if areas_with_issues <= p.covers] or [PLANS["complete"]]
+    return min(fits, key=lambda p: p.amount_cents).id

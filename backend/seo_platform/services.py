@@ -8,9 +8,9 @@ from typing import Any
 from .adapters.llm import Writer
 from .crawler import crawl
 from .db import ClientRepo, Database, now
-from .plans import PLANS
+from .plans import PLANS, recommend
 from .policy import lint
-from .rules import health_score, run_rules
+from .rules import area_of, health_score, run_rules
 from .visibility import metrics as visibility_metrics
 
 CRAWL_COST_PER_PAGE_USD = 0.0005  # compute estimate for metering
@@ -27,6 +27,7 @@ def change_label(c: dict[str, Any]) -> str:
 def _count(n: int, word: str) -> str:
     return f"{n} {word}{'' if n == 1 else 's'}"
 SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+AREA_NAMES = {"technical": "Technical health", "onpage": "On-page basics", "ai_local": "AI and local readiness"}
 
 
 async def run_audit(repo: ClientRepo, actor: str, kind: str = "audit") -> dict[str, Any]:
@@ -72,28 +73,17 @@ async def grade(db: Database, url: str, email: str | None, business_name: str | 
     rows = [p.to_row() for p in result.pages]
     findings = run_rules(rows, result.ai_bots_blocked, result.sitemap_urls)
     by_rule = Counter(f["rule_id"] for f in findings)
-    tech_rules = {"broken_link", "redirect_chain", "noindex_important", "not_in_sitemap", "missing_sitemap", "missing_canonical"}
-    onpage_rules = {"missing_title", "title_too_long", "duplicate_title", "missing_meta_description", "missing_h1",
-                    "multiple_h1", "img_missing_alt", "thin_content"}
-    ai_rules = {"ai_crawlers_blocked", "missing_local_business_schema"}
-
-    def section(rules: set[str]) -> int:
-        return health_score([f for f in findings if f["rule_id"] in rules])
-
+    by_area = {area: [f for f in findings if area_of(f["rule_id"]) == area] for area in AREA_NAMES}
     top = sorted(findings, key=lambda f: (SEVERITY_ORDER[f["severity"]], -f["impact"]))[:6]
-    areas = {"Technical health": tech_rules, "On-page basics": onpage_rules, "AI and local readiness": ai_rules}
-
-    def area_of(rule_id: str) -> str:  # a rule not listed above counts as technical
-        return next((name for name, rules in areas.items() if rule_id in rules), "Technical health")
-
+    plan = PLANS[recommend({area for area, found in by_area.items() if found})]
     # The visitor only learns how much is wrong and how serious it is. What exactly is wrong, and how to fix it,
     # is the paid work, so it stays in the lead record for us.
     out = {
         "url": url, "pages_checked": len(rows), "score": health_score(findings), "total_issues": len(findings),
         "by_severity": {s: sum(f["severity"] == s for f in findings) for s in SEVERITY_ORDER},
-        "areas": [{"name": name, "score": section(rules), "issues": sum(area_of(f["rule_id"]) == name for f in findings)}
-                  for name, rules in areas.items()],
-        "plan": {"id": "technical", "name": PLANS["technical"].name},
+        "areas": [{"name": AREA_NAMES[area], "score": health_score(found), "issues": len(found)}
+                  for area, found in by_area.items()],
+        "plan": {"id": plan.id, "name": plan.name},
     }
     detail = {**out, "issue_counts": dict(by_rule),
               "top_issues": [{"severity": f["severity"], "title": f["title"], "fix_hint": f["fix_hint"]} for f in top]}

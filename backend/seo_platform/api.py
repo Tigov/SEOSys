@@ -32,7 +32,7 @@ from .db import ClientRepo, Database, now
 from .fixes import propose_for_finding
 from .net import BlockedHostError, make_client
 from .permissions import ACTIONS, CHANGE_ACTIONS, STATUS_ALLOWS, Access, require
-from .plans import PLANS
+from .plans import PLANS, plan_covers, plan_for
 
 log = logging.getLogger("seo_platform")
 HEAD_REVISION = "0005"  # the newest migration in backend/migrations/versions
@@ -360,6 +360,9 @@ def create_app(db: Database | None = None) -> FastAPI:
         finding = r.get("findings", finding_id)
         if finding is None:
             raise LookupError(f"Finding {finding_id} was not found for this client.")
+        plan = plan_for(r.client().get("plan"))
+        if not plan_covers(plan.id if plan else None, finding["rule_id"]):
+            raise HTTPException(403, f"Fixing this isn't part of the {plan.name if plan else ''} package.")
         return {"created": await propose_for_finding(r, finding, get_writer(), adapter_for(r), a.actor)}
 
     @app.post("/api/clients/{client_id}/changes/propose-all")

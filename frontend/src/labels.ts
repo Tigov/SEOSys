@@ -244,7 +244,13 @@ export const SITE = {
   },
   packages: {
     title: "Packages",
-    lede: "Start with a one-off SEO Audit, or let us look after your website every month. Prices are published, and there are no setup fees.",
+    lede: "Pick the kind of help you need, or get everything with Complete SEO. Prices are published, and there are no setup fees.",
+    groups: [
+      { mode: "subscription", title: "Monthly packages",
+        lede: "We check your website every month, fix what we find with your approval, and keep it fixed." },
+      { mode: "payment", title: "One-off packages",
+        lede: "A single check, with a plan for you to follow or with the fixes made for you. No monthly commitment." },
+    ] as { mode: "subscription" | "payment"; title: string; lede: string }[],
     choose: (name: string) => `Choose ${name}`,
     talk: "Talk to us",
     notify: "Ask about it",
@@ -254,16 +260,18 @@ export const SITE = {
     terms: "Prices are before tax. Monthly packages run for an initial three months, then month to month. Cancel from your dashboard with 30 days' notice.",
     faqTitle: "Common questions",
     faq: [
-      { q: "What's the difference between Technical SEO and Local SEO?", a: [
-        "Technical SEO is about your website itself: whether Google can find, load and understand every page. Think speed, broken links, page titles and sitemaps.",
-        "Local SEO is about showing up for people nearby, especially on Google Maps and in \"near me\" searches. Most of that work happens outside your website: your Google Business Profile, your reviews and your listings on directories. Local SEO includes everything in Technical SEO.",
+      { q: "Which package do I need?", a: [
+        "Technical SEO is about how your website works: whether Google can find, load and understand every page. Think speed, broken links, sitemaps and whether AI assistants can read it.",
+        "On-Page SEO is about what each page says: its title, its description in search results, its headings and its images, so Google knows what you offer and people choose to click.",
+        "Local SEO is about showing up for people nearby, on Google Maps and in \"near me\" searches. Most of that work happens outside your website: your Google Business Profile, your reviews and your directory listings.",
+        "Not sure? Run the free website check. It tells you which package fixes everything it found.",
       ] },
       { q: "Why is SEO monthly? Can't you fix everything once?", a: [
-        "Many problems can be fixed once, and the SEO Audit is for exactly that: a full check and a plan you can act on yourself.",
-        "Websites don't stay fixed, though. New pages, plugin updates and theme changes break things. Google changes how it ranks pages several times a year. Competitors keep improving, and new reviews and searches keep coming in. A monthly package catches those problems as they appear and keeps building on what's working.",
+        "You can. The SEO Fix-Up checks your whole website and fixes what it finds, once.",
+        "Websites don't stay fixed, though. New pages, plugin updates and theme changes break things. Google changes how it ranks pages several times a year, and competitors keep improving. A monthly package catches new problems as they appear, reports what changed, and keeps building on what's working.",
       ] },
-      { q: "Can I buy the audit and fix things myself?", a: [
-        "Yes. The audit comes with a 90-day plan in plain English, ordered by what matters most, so you or your web person can work through it.",
+      { q: "What's the difference between the SEO Audit and the SEO Fix-Up?", a: [
+        "The SEO Audit is a full check and a 90-day plan in plain English, so you or your web person can make the fixes. The SEO Fix-Up includes the audit, and we make the fixes for you.",
       ] },
       { q: "Do you guarantee a top spot on Google?", a: [
         "No. Nobody can honestly promise a ranking, and anyone who does is a reason to be careful. We show you every change we make and what it did.",
@@ -291,7 +299,7 @@ export const SITE = {
     how: { title: "How it works", sections: [
       { body: ["SEOSys is an SEO service for small and local businesses, run by real people and backed by software that does the checking for us."] },
       { heading: "1. Start with a free check", body: ["Enter your website address and see your biggest problems in about a minute. No account needed."] },
-      { heading: "2. Pick a package", body: ["Choose a one-off SEO Audit or monthly Technical SEO, then create an account and pay securely through Stripe. Your dashboard opens straight away."] },
+      { heading: "2. Pick a package", body: ["Choose monthly help with Technical, On-Page or Complete SEO, or a one-off Audit or Fix-Up, then create an account and pay securely through Stripe. Your dashboard opens straight away."] },
       { heading: "3. Connect your website and Google", body: ["Install our small WordPress plugin, or give us access another way, and connect Google Search Console and Analytics with a few clicks. We only ask to read your Google data, never to change it."] },
       { heading: "4. Approve, and watch it improve", body: ["Each month we send fixes for your approval, make the ones you approve, and check that each one worked. Your report shows what changed and what it did for you."] },
     ] as Section[] },

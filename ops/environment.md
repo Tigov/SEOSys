@@ -17,7 +17,7 @@ is the source of truth.
 | `MAIL_FROM` | `SEOSys <no-reply@seosys.local>` | An address on your domain |
 | `STRIPE_SECRET_KEY` | empty (buying disabled) | `sk_live_...` |
 | `STRIPE_WEBHOOK_SECRET` | empty | From the Stripe webhook endpoint |
-| `STRIPE_PRICE_AUDIT`, `STRIPE_PRICE_TECHNICAL`, `STRIPE_PRICE_LOCAL` | empty (package shows "Talk to us") | Live price IDs |
+| `STRIPE_PRICE_TECHNICAL`, `STRIPE_PRICE_ONPAGE`, `STRIPE_PRICE_LOCAL`, `STRIPE_PRICE_COMPLETE`, `STRIPE_PRICE_AUDIT`, `STRIPE_PRICE_FIXUP` | empty (package shows "Talk to us") | Live price IDs |
 | `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` | empty | Only for the first `seed`, then remove the password |
 | `SEED_DEMO_PASSWORD` | built-in | Never used in production |
 | `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` | empty | Your published OAuth client |

@@ -13,6 +13,20 @@ LOCAL_BUSINESS_TYPES = {"LocalBusiness", "HVACBusiness", "HomeAndConstructionBus
 TITLE_MAX = 60
 THIN_WORDS = 150
 
+# Which kind of SEO work each rule belongs to. Packages fix whole areas (see plans.py).
+AREAS: dict[str, frozenset[str]] = {
+    "technical": frozenset({"broken_link", "redirect_chain", "noindex_important", "not_in_sitemap", "missing_sitemap",
+                            "missing_canonical"}),
+    "onpage": frozenset({"missing_title", "title_too_long", "duplicate_title", "missing_meta_description", "missing_h1",
+                         "multiple_h1", "img_missing_alt", "thin_content"}),
+    "ai_local": frozenset({"ai_crawlers_blocked", "missing_local_business_schema"}),
+}
+
+
+def area_of(rule_id: str) -> str:
+    """The area a rule belongs to. A rule not listed in AREAS counts as technical."""
+    return next((area for area, rules in AREAS.items() if rule_id in rules), "technical")
+
 
 def page_name(path: str) -> str:
     return "the homepage" if path == "/" else path

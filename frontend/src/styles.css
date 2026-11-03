@@ -293,26 +293,16 @@ summary:hover { color: var(--ink); }
 .answers-q { margin-bottom: 2px; }
 .answers-q strong { margin-right: 8px; }
 
-/* ---------- grader, forms, pages ---------- */
+/* ---------- forms, pages ---------- */
 .page-head { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
 .stack > * + * { margin-top: 20px; }
-.grader { max-width: 760px; }
-.grader h1 { font-size: 34px; }
 .lede { font-size: 17px; color: var(--slate); margin: 10px 0 24px; max-width: 62ch; }
-.grader-form, .form-grid { display: grid; gap: 14px; }
-.grader-form .btn { justify-self: start; }
+.form-grid { display: grid; gap: 14px; }
 .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .form-grid .wide { grid-column: 1 / -1; }
 label { display: grid; gap: 6px; font-weight: 600; font-size: 14px; }
 input, select { font: 15px var(--ui); padding: 9px 12px; border: 1px solid #b7c5c3; border-radius: var(--r-sm); background: var(--paper); color: var(--ink); }
 input:focus-visible, select:focus-visible { border-color: var(--ink); }
-.grader .panel { margin-top: 24px; }
-.sections { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 18px 0 24px; }
-.sections div { border-top: 3px solid var(--ink); padding-top: 8px; }
-.sections dt { color: var(--slate); font-size: 13px; }
-.sections dd { margin: 0; font-family: var(--num); font-size: 24px; font-weight: 600; }
-.issues { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 14px; }
-.issues li { display: grid; grid-template-columns: 96px 1fr; gap: 12px; }
 
 /* ---------- toasts ---------- */
 .toasts { position: fixed; right: 24px; bottom: 24px; display: grid; gap: 8px; z-index: 10; max-width: 440px; }
@@ -372,7 +362,7 @@ input:focus-visible, select:focus-visible { border-color: var(--ink); }
   .rail-foot { margin-top: 0; flex-direction: row; flex-wrap: wrap; align-items: flex-end; }
   .main { padding: 24px 16px 48px; }
   .client-head { align-items: flex-start; }
-  .two-col, .diff, .serp-pair, .form-grid, .sections, .psi-result, .figures-3 { grid-template-columns: 1fr; }
+  .two-col, .diff, .serp-pair, .form-grid, .psi-result, .figures-3 { grid-template-columns: 1fr; }
   .figures-3 .figure + .figure { border-left: 0; border-top: 1px solid var(--rule-soft); }
   .access { flex-direction: column; align-items: flex-start; }
   .speed-list li { grid-template-columns: minmax(0, 1fr) auto; }
@@ -467,14 +457,19 @@ input:focus-visible, select:focus-visible { border-color: var(--ink); }
 .prose h2 { font-size: 19px; margin: 28px 0 8px; }
 .prose p { margin: 0 0 12px; max-width: 68ch; font-size: 16px; line-height: 1.65; }
 
-.plans { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; margin-top: 8px; }
+.plan-group { margin-top: 36px; }
+.plan-group > h2 { font-size: 24px; }
+.plan-group > p { margin: 6px 0 18px; }
+.plans { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+@media (min-width: 1180px) { .plans-subscription { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 .plan { border: 1px solid var(--rule); border-radius: var(--r-md); padding: 24px; display: flex; flex-direction: column; gap: 12px; }
-.plan h2 { font-size: 21px; }
+.plan h3 { font-size: 21px; margin: 0; }
+.plan-all { border: 2px solid var(--ink); }
 .plan-price { font: 600 22px/1.2 var(--num); }
 .plan ul { margin: 0 0 8px; padding-left: 18px; display: grid; gap: 6px; flex: 1; align-content: start; }
 .plan .btn { align-self: flex-start; }
 .plans-terms { margin-top: 18px; font-size: 14px; }
-.plan h2 .pill { vertical-align: middle; margin-left: 6px; }
+.plan h3 .pill { vertical-align: middle; margin-left: 6px; }
 .faq { margin-top: 48px; max-width: 760px; }
 .faq details { border-top: 1px solid var(--rule); padding: 14px 0; }
 .faq details:last-child { border-bottom: 1px solid var(--rule); }

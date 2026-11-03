@@ -143,7 +143,7 @@ def test_grader_and_report(api):
     assert sum(out["by_severity"].values()) == out["total_issues"]
     assert set(out["by_severity"]) == {"critical", "high", "medium", "low"}
     assert sum(a["issues"] for a in out["areas"]) == out["total_issues"]
-    assert out["plan"] == {"id": "technical", "name": "Technical SEO"}
+    assert out["plan"] == {"id": "complete", "name": "Complete SEO"}  # the demo site has technical and on-page problems
     # The free check says how much is wrong, never what or how to fix it.
     for secret in ("top_issues", "fix_hint", "issue_counts", "title", "missing_", "rule"):
         assert secret not in r.text

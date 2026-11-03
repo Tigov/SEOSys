@@ -14,6 +14,7 @@ from .adapters.llm import Writer
 from .adapters.site_wp import WordPressAdapter
 from .crawler import AI_BOTS
 from .db import ClientRepo, now
+from .plans import plan_covers
 from .policy import lint
 
 # Risk per FDD FR-10.2: Low = meta/alt/schema on one page; Medium = content edits;
@@ -87,7 +88,7 @@ async def propose_for_finding(repo: ClientRepo, finding: dict[str, Any], writer:
     client = repo.client()
     site = repo.site()
     fix_type = finding["fix_type"]
-    if not fix_type:
+    if not fix_type or not plan_covers(client.get("plan"), finding["rule_id"]):
         return []
     crawl = repo.latest_crawl()
     pages = {p["path"]: p for p in repo.list("pages", "crawl_id = ?", (crawl["id"],))} if crawl else {}

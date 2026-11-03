@@ -71,8 +71,10 @@ def buyer(api, make_user, db):
 
 def test_plans_are_public(api, stripe_fake):
     plans = {p["id"]: p for p in api.get("/api/plans").json()}
-    assert list(plans) == ["audit", "technical", "local"]
-    assert [p["name"] for p in plans.values()] == ["SEO Audit", "Technical SEO", "Local SEO"]
+    assert list(plans) == ["technical", "onpage", "local", "complete", "audit", "fixup"]
+    assert [p["name"] for p in plans.values()] == ["Technical SEO", "On-Page SEO", "Local SEO", "Complete SEO",
+                                                    "SEO Audit", "SEO Fix-Up"]
+    assert "covers" not in plans["technical"]
     assert plans["technical"]["available"] is True and plans["audit"]["available"] is False
 
 

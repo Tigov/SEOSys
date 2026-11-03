@@ -223,23 +223,29 @@ export function Packages() {
     <section className="page">
       <h1>{SITE.packages.title}</h1>
       <p className="hero-lede">{SITE.packages.lede}</p>
-      <div className="plans">
-        {(plans.data ?? []).map((p) => (
-          <article key={p.id} className="plan" data-testid={`plan-${p.id}`}>
-            <h2>{p.name}{p.coming_soon && <> <span className="pill" data-testid={`soon-${p.id}`}>{SITE.packages.soon}</span></>}</h2>
-            <p className="plan-price">{p.price_label}</p>
-            <p>{p.summary}</p>
-            <ul>{p.includes.map((i) => <li key={i}>{i}</li>)}</ul>
-            {me?.user.is_admin ? null : owns ? (
-              <p className="muted">{SITE.packages.alreadyClient}</p>
-            ) : p.available ? (
-              <button type="button" className="btn btn-primary" onClick={() => start(p)} data-testid={`buy-${p.id}`}>{SITE.packages.choose(p.name)}</button>
-            ) : (
-              <a className="btn btn-secondary" href="#/contact">{p.coming_soon ? SITE.packages.notify : SITE.packages.talk}</a>
-            )}
-          </article>
-        ))}
-      </div>
+      {SITE.packages.groups.map((g) => (
+        <section key={g.mode} className="plan-group" aria-labelledby={`plans-${g.mode}`} data-testid={`plans-${g.mode}`}>
+          <h2 id={`plans-${g.mode}`}>{g.title}</h2>
+          <p className="muted">{g.lede}</p>
+          <div className={`plans plans-${g.mode}`}>
+            {(plans.data ?? []).filter((p) => p.mode === g.mode).map((p) => (
+              <article key={p.id} className={`plan${p.id === "complete" ? " plan-all" : ""}`} data-testid={`plan-${p.id}`}>
+                <h3>{p.name}{p.coming_soon && <> <span className="pill" data-testid={`soon-${p.id}`}>{SITE.packages.soon}</span></>}</h3>
+                <p className="plan-price">{p.price_label}</p>
+                <p>{p.summary}</p>
+                <ul>{p.includes.map((i) => <li key={i}>{i}</li>)}</ul>
+                {me?.user.is_admin ? null : owns ? (
+                  <p className="muted">{SITE.packages.alreadyClient}</p>
+                ) : p.available ? (
+                  <button type="button" className="btn btn-primary" onClick={() => start(p)} data-testid={`buy-${p.id}`}>{SITE.packages.choose(p.name)}</button>
+                ) : (
+                  <a className="btn btn-secondary" href="#/contact">{p.coming_soon ? SITE.packages.notify : SITE.packages.talk}</a>
+                )}
+              </article>
+            ))}
+          </div>
+        </section>
+      ))}
       <p className="muted plans-terms">{SITE.packages.terms}</p>
       <section className="faq prose" aria-labelledby="faq-title">
         <h2 id="faq-title">{SITE.packages.faqTitle}</h2>
