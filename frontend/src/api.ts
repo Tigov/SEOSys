@@ -74,7 +74,7 @@ export interface Me {
   mfa_passed: boolean; csrf_token: string; memberships: Membership[];
   gate: "mfa_required" | "email_unverified" | "mfa_setup_required" | null; recovery_codes_left: number | null;
 }
-export interface Plan { id: string; name: string; mode: "subscription" | "payment"; price_label: string; summary: string; includes: string[]; available: boolean }
+export interface Plan { id: string; name: string; mode: "subscription" | "payment"; price_label: string; summary: string; includes: string[]; available: boolean; coming_soon: boolean }
 export interface SessionRow { id: string; current: boolean; created_at: string; last_seen_at: string; ip: string | null; user_agent: string }
 export interface TeamMember { user_id: number; name: string; email: string; role: "owner" | "member"; can_approve: boolean; two_step: boolean; joined_at: string }
 export interface Invite { id: number; email: string; can_approve: boolean; expires_at: string; created_at: string }

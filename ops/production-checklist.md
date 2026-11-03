@@ -8,8 +8,8 @@ The app refuses to start with `APP_ENV=production` while any of the checks it ca
 - [ ] **Legal**: have a lawyer review the privacy policy and terms (the site's pages are working drafts).
 - [ ] **Google sign-in app**: publish the OAuth app in Google Cloud and pass Google's verification (needs a privacy
       policy URL, a homepage on your own domain, and the scopes explained). Until then refresh tokens expire after 7 days.
-- [ ] **Stripe**: create the live products and prices; set `STRIPE_PRICE_AUDIT`, `STRIPE_PRICE_LOCAL`,
-      `STRIPE_PRICE_GROWTH`; add a webhook endpoint for `https://<your domain>/api/billing/webhook` with the events
+- [ ] **Stripe**: create the live products and prices; set `STRIPE_PRICE_AUDIT`, `STRIPE_PRICE_TECHNICAL`,
+      `STRIPE_PRICE_LOCAL` (Local SEO stays "coming soon" until it launches); add a webhook endpoint for `https://<your domain>/api/billing/webhook` with the events
       `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`,
       `invoice.payment_failed`; set `STRIPE_WEBHOOK_SECRET` from it. Turn on the Stripe billing portal.
 - [ ] **Email**: a real provider (Amazon SES, Postmark or similar) with SPF, DKIM and DMARC on your domain.

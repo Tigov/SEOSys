@@ -33,7 +33,9 @@ class FakeStripe:
 def stripe_fake(override, monkeypatch):
     fake = FakeStripe()
     monkeypatch.setattr(billing, "gateway", fake)
+    monkeypatch.setenv("STRIPE_PRICE_TECHNICAL", "price_technical_test")
     monkeypatch.setenv("STRIPE_PRICE_LOCAL", "price_local_test")
+    monkeypatch.delenv("STRIPE_PRICE_AUDIT", raising=False)
     override(stripe_webhook_secret=SECRET)
     return fake
 
@@ -51,7 +53,7 @@ def post_event(api, event):
                     headers={"Stripe-Signature": sig, "Content-Type": "application/json"})
 
 
-def completed(user_id, event_id="evt_1", customer="cus_1", plan="local", sub="sub_1"):
+def completed(user_id, event_id="evt_1", customer="cus_1", plan="technical", sub="sub_1"):
     return {"id": event_id, "type": "checkout.session.completed", "data": {"object": {
         "id": "cs_1", "customer": customer, "subscription": sub, "client_reference_id": str(user_id),
         "metadata": {"user_id": str(user_id), "plan": plan, "business_name": "Sam's Plumbing"}}}}
@@ -69,8 +71,26 @@ def buyer(api, make_user, db):
 
 def test_plans_are_public(api, stripe_fake):
     plans = {p["id"]: p for p in api.get("/api/plans").json()}
-    assert set(plans) == {"audit", "local", "growth"}
-    assert plans["local"]["available"] is True and plans["growth"]["available"] is False
+    assert list(plans) == ["audit", "technical", "local"]
+    assert [p["name"] for p in plans.values()] == ["SEO Audit", "Technical SEO", "Local SEO"]
+    assert plans["technical"]["available"] is True and plans["audit"]["available"] is False
+
+
+def test_coming_soon_plan_is_shown_but_cannot_be_bought(buyer, stripe_fake):
+    local = {p["id"]: p for p in buyer[1].get("/api/plans").json()}["local"]
+    assert local["coming_soon"] is True and local["available"] is False  # even though its price is set
+    r = buyer[1].post("/api/billing/checkout", json={"plan": "local", "business_name": "Sam's Plumbing"})
+    assert r.status_code == 503 and "not available yet" in r.json()["detail"]
+    assert stripe_fake.checkouts == []
+
+
+def test_clients_on_the_retired_growth_package_see_technical_seo(api, buyer, stripe_fake, db):
+    uid, browser = buyer
+    post_event(api, completed(uid))
+    client = db.one("SELECT id FROM clients WHERE stripe_customer_id = 'cus_1'")
+    db.execute("UPDATE clients SET plan = 'growth' WHERE id = ?", (client["id"],))
+    r = browser.get(f"/api/clients/{client['id']}/billing")
+    assert r.json()["plan"]["name"] == "Technical SEO"
 
 
 def test_checkout_requires_verified_email(api, make_user, stripe_fake):
@@ -79,34 +99,34 @@ def test_checkout_requires_verified_email(api, make_user, stripe_fake):
     browser = RoleClient(api.app)
     browser.identities = {}
     login(browser, "new@example.com")
-    r = browser.post("/api/billing/checkout", json={"plan": "local", "business_name": "New Co"})
+    r = browser.post("/api/billing/checkout", json={"plan": "technical", "business_name": "New Co"})
     assert r.status_code == 403 and r.json()["detail"] == "email_unverified"
 
 
 def test_checkout_sends_buyer_to_stripe(buyer, stripe_fake):
     uid, browser = buyer
-    r = browser.post("/api/billing/checkout", json={"plan": "local", "business_name": "Sam's Plumbing"})
+    r = browser.post("/api/billing/checkout", json={"plan": "technical", "business_name": "Sam's Plumbing"})
     assert r.json() == {"url": "https://checkout.stripe.test/session"}
     params = stripe_fake.checkouts[0]
-    assert params["mode"] == "subscription" and params["line_items"] == [{"price": "price_local_test", "quantity": 1}]
-    assert params["metadata"] == {"user_id": str(uid), "plan": "local", "business_name": "Sam's Plumbing"}
+    assert params["mode"] == "subscription" and params["line_items"] == [{"price": "price_technical_test", "quantity": 1}]
+    assert params["metadata"] == {"user_id": str(uid), "plan": "technical", "business_name": "Sam's Plumbing"}
 
 
 def test_unpriced_plan_cannot_be_bought(buyer, stripe_fake):
-    r = buyer[1].post("/api/billing/checkout", json={"plan": "growth", "business_name": "Sam's Plumbing"})
+    r = buyer[1].post("/api/billing/checkout", json={"plan": "audit", "business_name": "Sam's Plumbing"})
     assert r.status_code == 503
 
 
 def test_owner_and_admin_cannot_buy_again(api, stripe_fake):
-    assert api.post("/api/billing/checkout", json={"plan": "local", "business_name": "X Co"}, headers=CLIENT).status_code == 403
-    assert api.post("/api/billing/checkout", json={"plan": "local", "business_name": "X Co"}, headers=STAFF).status_code == 403
+    assert api.post("/api/billing/checkout", json={"plan": "technical", "business_name": "X Co"}, headers=CLIENT).status_code == 403
+    assert api.post("/api/billing/checkout", json={"plan": "technical", "business_name": "X Co"}, headers=STAFF).status_code == 403
 
 
 def test_checkout_completed_creates_client_owner_subscription_and_welcome(api, buyer, stripe_fake, db, mail):
     uid, browser = buyer
     assert post_event(api, completed(uid)).json() == {"result": "client_created"}
     client = db.one("SELECT * FROM clients WHERE stripe_customer_id = 'cus_1'")
-    assert client["name"] == "Sam's Plumbing" and client["status"] == "active" and client["plan"] == "local"
+    assert client["name"] == "Sam's Plumbing" and client["status"] == "active" and client["plan"] == "technical"
     assert db.one("SELECT role FROM memberships WHERE user_id = ?", (uid,))["role"] == "owner"
     assert db.one("SELECT status FROM subscriptions WHERE client_id = ?", (client["id"],))["status"] == "active"
     assert mail().to("buyer@example.com")[-1]["Subject"] == "Welcome to SEOSys"
@@ -228,7 +248,7 @@ def test_seed_refuses_demo_in_production(db, override):
 def _session(user_id, status="complete"):
     return {"id": "cs_test_1", "status": status, "customer": "cus_1", "subscription": "sub_1",
             "client_reference_id": str(user_id),
-            "metadata": {"user_id": str(user_id), "plan": "local", "business_name": "Sam's Plumbing"}}
+            "metadata": {"user_id": str(user_id), "plan": "technical", "business_name": "Sam's Plumbing"}}
 
 
 def test_return_from_stripe_sets_up_account_without_webhook(api, buyer, stripe_fake, db):
@@ -236,7 +256,7 @@ def test_return_from_stripe_sets_up_account_without_webhook(api, buyer, stripe_f
     stripe_fake.sessions["cs_test_1"] = _session(uid)
     r = browser.post("/api/billing/confirm", json={"session_id": "cs_test_1"})
     client_id = r.json()["client_id"]
-    assert r.status_code == 200 and db.get_client(client_id)["plan"] == "local"
+    assert r.status_code == 200 and db.get_client(client_id)["plan"] == "technical"
     assert browser.post("/api/billing/confirm", json={"session_id": "cs_test_1"}).json() == {"client_id": client_id}
     assert post_event(api, completed(uid)).json() == {"result": "already_created"}  # the late webhook changes nothing
     assert db.one("SELECT count(*) AS n FROM clients WHERE stripe_customer_id = 'cus_1'")["n"] == 1

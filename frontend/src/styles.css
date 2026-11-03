@@ -468,6 +468,13 @@ input:focus-visible, select:focus-visible { border-color: var(--ink); }
 .plan ul { margin: 0 0 8px; padding-left: 18px; display: grid; gap: 6px; flex: 1; align-content: start; }
 .plan .btn { align-self: flex-start; }
 .plans-terms { margin-top: 18px; font-size: 14px; }
+.plan h2 .pill { vertical-align: middle; margin-left: 6px; }
+.faq { margin-top: 48px; max-width: 760px; }
+.faq details { border-top: 1px solid var(--rule); padding: 14px 0; }
+.faq details:last-child { border-bottom: 1px solid var(--rule); }
+.faq summary { cursor: pointer; font-weight: 600; font-size: 17px; }
+.faq summary:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+.faq details p { margin: 10px 0 0; }
 .dialog { margin-top: 28px; max-width: 520px; border: 2px solid var(--ink); border-radius: var(--r-md); padding: 24px;
   display: flex; flex-direction: column; gap: 12px; background: var(--paper); }
 .dialog input { font: inherit; padding: 10px 12px; border: 1px solid #b9c7c4; border-radius: var(--r-sm); }

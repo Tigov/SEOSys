@@ -220,7 +220,7 @@ export const SITE = {
     sampleMeta: "12 pages checked on a plumber's website",
     monthTitle: "What happens every month",
     steps: [
-      { title: "We check your website", text: "A full inspection of every page: speed, titles, broken links, and how often AI assistants recommend you." },
+      { title: "We check your website", text: "A full inspection of every page: speed, titles, broken links, sitemaps and how Google sees each one." },
       { title: "We prepare the fixes", text: "Each fix shows what it changes, why, and how risky it is, in plain English." },
       { title: "You approve them", text: "Approve or reject each one from your dashboard. You can let small, safe fixes go ahead on their own." },
       { title: "We make the change and check it worked", text: "If anything looks wrong afterwards, the change is undone automatically." },
@@ -229,18 +229,43 @@ export const SITE = {
     promises: [
       "Your website, accounts and content stay yours.",
       "Every change is recorded, and any change can be undone.",
-      "We report on calls, leads and mentions in AI answers, not just rankings.",
+      "We report on visitors and enquiries from search, not just rankings.",
       "We never promise a spot on Google, because nobody honestly can.",
     ],
   },
   packages: {
     title: "Packages",
-    lede: "Pick the help you need. Monthly packages run for three months at first, then month to month with 30 days' notice.",
+    lede: "Start with a one-off SEO Audit, or let us look after your website every month. Prices are published, and there are no setup fees.",
     choose: (name: string) => `Choose ${name}`,
     talk: "Talk to us",
+    notify: "Ask about it",
+    soon: "Coming soon",
     alreadyClient: "You already have a package. Manage it from your dashboard.",
     verifyFirst: "Confirm your email address first. Check your inbox for the link we sent.",
-    terms: "Prices are before tax. You can cancel a monthly package at any time from your dashboard.",
+    terms: "Prices are before tax. Monthly packages run for an initial three months, then month to month. Cancel from your dashboard with 30 days' notice.",
+    faqTitle: "Common questions",
+    faq: [
+      { q: "What's the difference between Technical SEO and Local SEO?", a: [
+        "Technical SEO is about your website itself: whether Google can find, load and understand every page. Think speed, broken links, page titles and sitemaps.",
+        "Local SEO is about showing up for people nearby, especially on Google Maps and in \"near me\" searches. Most of that work happens outside your website: your Google Business Profile, your reviews and your listings on directories. Local SEO includes everything in Technical SEO.",
+      ] },
+      { q: "Why is SEO monthly? Can't you fix everything once?", a: [
+        "Many problems can be fixed once, and the SEO Audit is for exactly that: a full check and a plan you can act on yourself.",
+        "Websites don't stay fixed, though. New pages, plugin updates and theme changes break things. Google changes how it ranks pages several times a year. Competitors keep improving, and new reviews and searches keep coming in. A monthly package catches those problems as they appear and keeps building on what's working.",
+      ] },
+      { q: "Can I buy the audit and fix things myself?", a: [
+        "Yes. The audit comes with a 90-day plan in plain English, ordered by what matters most, so you or your web person can work through it.",
+      ] },
+      { q: "Do you guarantee a top spot on Google?", a: [
+        "No. Nobody can honestly promise a ranking, and anyone who does is a reason to be careful. We show you every change we make and what it did.",
+      ] },
+      { q: "What happens if I cancel?", a: [
+        "Every fix we made lives in your own website, so it stays. You can download all your data, and your account stays readable for 30 days before it closes.",
+      ] },
+      { q: "Which websites do you work with?", a: [
+        "We make approved fixes directly on WordPress websites through our plugin. For other website builders, such as Shopify, Wix and Squarespace, we send each fix as clear step-by-step instructions.",
+      ] },
+    ] as { q: string; a: string[] }[],
     dialogTitle: (name: string) => `Start the ${name} package`,
     business: "Your business name",
     stripeNote: "Next you'll go to Stripe, our payment provider, to pay securely. We never see your card details.",
@@ -255,9 +280,9 @@ export const SITE = {
   },
   pages: {
     how: { title: "How it works", sections: [
-      { body: ["SEOSys is an SEO service for local businesses, run by real people and backed by software that does the checking for us."] },
+      { body: ["SEOSys is an SEO service for small and local businesses, run by real people and backed by software that does the checking for us."] },
       { heading: "1. Start with a free check", body: ["Enter your website address and see your biggest problems in about a minute. No account needed."] },
-      { heading: "2. Pick a package", body: ["Create an account, choose a package and pay securely through Stripe. Your dashboard opens straight away."] },
+      { heading: "2. Pick a package", body: ["Choose a one-off SEO Audit or monthly Technical SEO, then create an account and pay securely through Stripe. Your dashboard opens straight away."] },
       { heading: "3. Connect your website and Google", body: ["Install our small WordPress plugin, or give us access another way, and connect Google Search Console and Analytics with a few clicks. We only ask to read your Google data, never to change it."] },
       { heading: "4. Approve, and watch it improve", body: ["Each month we send fixes for your approval, make the ones you approve, and check that each one worked. Your report shows what changed and what it did for you."] },
     ] as Section[] },

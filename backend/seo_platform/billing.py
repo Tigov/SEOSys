@@ -17,7 +17,7 @@ from . import clock, mailer
 from .config import settings
 from .db import Database
 from .permissions import Access
-from .plans import PLANS
+from .plans import PLANS, plan_for
 
 log = logging.getLogger("seo_platform.billing")
 
@@ -64,6 +64,8 @@ def start_checkout(db: Database, a: Access, plan_id: str, business_name: str) ->
     plan = PLANS.get(plan_id)
     if plan is None:
         raise BillingError("That package doesn't exist.", 404)
+    if plan.coming_soon:
+        raise BillingError(f"The {plan.name} package is not available yet. Contact us to hear when it is.", 503)
     if not plan.price_id:
         raise BillingError(f"The {plan.name} package can't be bought online yet. Contact us to get started.", 503)
     name = business_name.strip()[:200]
@@ -115,7 +117,7 @@ def portal_url(db: Database, a: Access) -> str:
 def summary(db: Database, client_id: int) -> dict[str, Any]:
     client = db.get_client(client_id) or {}
     sub = db.one("SELECT plan, status, current_period_end, cancel_at FROM subscriptions WHERE client_id = ?", (client_id,))
-    plan = PLANS.get(client.get("plan") or "")
+    plan = plan_for(client.get("plan"))
     return {"plan": plan.public() if plan else None, "status": client.get("status"), "subscription": sub,
             "billed_online": bool(client.get("stripe_customer_id"))}
 
@@ -151,7 +153,7 @@ def handle_event(db: Database, event: dict[str, Any]) -> str:
 def _checkout_completed(db: Database, obj: dict[str, Any]) -> str:
     meta = obj.get("metadata") or {}
     user_id = int(meta.get("user_id") or obj.get("client_reference_id") or 0)
-    plan = PLANS.get(meta.get("plan", ""))
+    plan = plan_for(meta.get("plan"))
     user = db.one("SELECT * FROM users WHERE id = ?", (user_id,))
     customer = obj.get("customer")
     if user is None or plan is None or not customer:

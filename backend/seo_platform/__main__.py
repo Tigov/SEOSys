@@ -63,7 +63,7 @@ def stripe_setup(write_env: str | None) -> dict[str, str]:
     client = stripe.StripeClient(settings.stripe_secret_key)
     found: dict[str, str] = {}
     for plan in PLANS.values():
-        key = f"seosys_{plan.id}"
+        key = f"seosys_{plan.id}_{plan.amount_cents}"  # a new amount gets a new price; old subscribers keep theirs
         existing = client.v1.prices.list(params={"lookup_keys": [key], "limit": 1}).data
         if existing:
             found[plan.price_env] = existing[0].id

@@ -214,7 +214,7 @@ export function Packages() {
       <div className="plans">
         {(plans.data ?? []).map((p) => (
           <article key={p.id} className="plan" data-testid={`plan-${p.id}`}>
-            <h2>{p.name}</h2>
+            <h2>{p.name}{p.coming_soon && <> <span className="pill" data-testid={`soon-${p.id}`}>{SITE.packages.soon}</span></>}</h2>
             <p className="plan-price">{p.price_label}</p>
             <p>{p.summary}</p>
             <ul>{p.includes.map((i) => <li key={i}>{i}</li>)}</ul>
@@ -223,12 +223,21 @@ export function Packages() {
             ) : p.available ? (
               <button type="button" className="btn btn-primary" onClick={() => start(p)} data-testid={`buy-${p.id}`}>{SITE.packages.choose(p.name)}</button>
             ) : (
-              <a className="btn btn-secondary" href="#/contact">{SITE.packages.talk}</a>
+              <a className="btn btn-secondary" href="#/contact">{p.coming_soon ? SITE.packages.notify : SITE.packages.talk}</a>
             )}
           </article>
         ))}
       </div>
       <p className="muted plans-terms">{SITE.packages.terms}</p>
+      <section className="faq prose" aria-labelledby="faq-title">
+        <h2 id="faq-title">{SITE.packages.faqTitle}</h2>
+        {SITE.packages.faq.map((f) => (
+          <details key={f.q} data-testid="faq-item">
+            <summary>{f.q}</summary>
+            {f.a.map((p) => <p key={p}>{p}</p>)}
+          </details>
+        ))}
+      </section>
       {choosing && (
         <form className="dialog" onSubmit={buy} aria-label={SITE.packages.dialogTitle(choosing.name)} data-testid="buy-form">
           <h2>{SITE.packages.dialogTitle(choosing.name)}</h2>
