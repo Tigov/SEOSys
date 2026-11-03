@@ -1,4 +1,6 @@
 """Admin pages and onboarding a client's website."""
+import pytest
+
 from tests.conftest import CLIENT, MEMBER, STAFF
 
 
@@ -34,6 +36,13 @@ def test_owner_adds_website_and_gets_plugin_key_once(api, db):
     assert "adapter_secret" not in body["site"]
     assert db.for_client(1).site()["adapter_secret"] == body["plugin_key"]
     assert api.put("/api/clients/1/site", json={"base_url": "https://x.example"}, headers=MEMBER).status_code == 403
+
+
+@pytest.mark.parametrize("cms", ["wix", "squarespace"])
+def test_owner_adds_a_wix_or_squarespace_site_without_a_plugin_key(api, db, cms):
+    r = api.put("/api/clients/1/site", json={"base_url": "https://shop.example", "cms": cms}, headers=CLIENT)
+    assert r.status_code == 200 and r.json()["plugin_key"] is None and r.json()["site"]["cms"] == cms
+    assert db.for_client(1).site()["cms"] == cms
 
 
 def test_summary_works_before_a_website_is_added(api, db):

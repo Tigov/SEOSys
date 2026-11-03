@@ -214,7 +214,7 @@ sites = Table(
     Column("cms", Text, nullable=False),
     Column("adapter_secret", Text),
     _created(),
-    _one_of("cms", ("wordpress", "shopify", "github", "other")),
+    _one_of("cms", ("wordpress", "shopify", "wix", "squarespace", "github", "other")),
 )
 
 leads = Table(

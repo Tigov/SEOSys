@@ -99,32 +99,57 @@ function CheckForm({ onResult }: { onResult: (r: GradeResult) => void }) {
   );
 }
 
-function CheckResult({ r }: { r: GradeResult }) {
+// The scan result says how much is wrong and how serious it is, never what exactly or how to fix it:
+// that's the work people pay for.
+function ScanCard({ r, title, meta, sample = false }: { r: GradeResult; title: string; meta: string; sample?: boolean }) {
+  const severities = (["critical", "high", "medium", "low"] as const).filter((s) => r.by_severity[s] > 0);
   return (
-    <section className="report-card" aria-live="polite" data-testid="check-result">
+    <section className={`report-card${sample ? " sample" : ""}`} aria-live={sample ? undefined : "polite"}
+      aria-label={sample ? SITE.home.sampleLabel : undefined} data-testid={sample ? undefined : "check-result"}>
       <div className="report-head">
         <span className="report-score">{r.score}</span>
-        <div>
-          <h2>{SITE.check.scoreTitle}</h2>
-          <p className="muted">{SITE.check.checked(r.pages_checked, r.url.replace(/^https?:\/\//, ""))}</p>
-        </div>
+        <div><h2>{title}</h2><p className="muted">{meta}</p></div>
       </div>
-      <ol className="report-list">
-        {r.top_issues.map((i, n) => (
-          <li key={n}><span className={`sev sev-${i.severity}`}>{SITE.severity[i.severity] ?? i.severity}</span>
-            <span><strong>{i.title}</strong><span className="muted"> {i.fix_hint}</span></span></li>
-        ))}
-      </ol>
-      <p className="report-cta"><a className="btn btn-primary" href="#/packages">{SITE.check.next}</a></p>
+      {r.total_issues === 0 ? <p className="report-total">{SITE.check.clean}</p> : (
+        <>
+          <p className="report-total" data-testid="check-total">{SITE.check.found(r.total_issues)}</p>
+          <ul className="report-sevs" aria-label={SITE.check.bySeverity}>
+            {severities.map((s) => (
+              <li key={s} className={`sev sev-${s}`}><span className="sev-mark" aria-hidden="true" />
+                <span className="report-count">{r.by_severity[s]}</span> {SITE.severity[s]}</li>
+            ))}
+          </ul>
+          <ul className="report-list report-areas" aria-label={SITE.check.byArea}>
+            {r.areas.map((a) => (
+              <li key={a.name}><strong>{a.name}</strong><span className="muted">{SITE.check.areaIssues(a.issues)}</span></li>
+            ))}
+          </ul>
+        </>
+      )}
+      {!sample && (
+        <div className="report-cta">
+          <p><strong>{r.total_issues ? SITE.check.pitch(r.plan.name) : SITE.check.cleanPitch}</strong></p>
+          <p className="muted">{SITE.check.auditPitch}</p>
+          <div className="row">
+            <a className="btn btn-primary" href="#/packages" data-testid="check-plan">{SITE.check.seePlan(r.plan.name)}</a>
+            <a className="btn btn-secondary" href="#/packages">{SITE.check.seeAudit}</a>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
 
-const SAMPLE = [
-  { severity: "high", title: "Two service pages have the same title", hint: "Google can't tell them apart." },
-  { severity: "medium", title: "The contact page is missing from your sitemap", hint: "Search engines may not find it." },
-  { severity: "low", title: "Nine photos have no description", hint: "Screen readers and image search skip them." },
-];
+function CheckResult({ r }: { r: GradeResult }) {
+  return <ScanCard r={r} title={SITE.check.scoreTitle} meta={SITE.check.checked(r.pages_checked, r.url.replace(/^https?:\/\//, ""))} />;
+}
+
+const SAMPLE: GradeResult = {
+  url: "", pages_checked: 12, score: 62, total_issues: 11, by_severity: { critical: 0, high: 2, medium: 5, low: 4 },
+  areas: [{ name: "Technical health", score: 70, issues: 3 }, { name: "On-page basics", score: 55, issues: 6 },
+    { name: "AI and local readiness", score: 60, issues: 2 }],
+  plan: { id: "technical", name: "Technical SEO" },
+};
 
 export function Home() {
   const [result, setResult] = useState<GradeResult | null>(null);
@@ -137,20 +162,7 @@ export function Home() {
           <CheckForm onResult={setResult} />
         </div>
         <div className="hero-side">
-          {result ? <CheckResult r={result} /> : (
-            <section className="report-card sample" aria-label={SITE.home.sampleLabel}>
-              <div className="report-head">
-                <span className="report-score">62</span>
-                <div><h2>{SITE.home.sampleTitle}</h2><p className="muted">{SITE.home.sampleMeta}</p></div>
-              </div>
-              <ol className="report-list">
-                {SAMPLE.map((i) => (
-                  <li key={i.title}><span className={`sev sev-${i.severity}`}>{SITE.severity[i.severity]}</span>
-                    <span><strong>{i.title}</strong><span className="muted"> {i.hint}</span></span></li>
-                ))}
-              </ol>
-            </section>
-          )}
+          {result ? <CheckResult r={result} /> : <ScanCard r={SAMPLE} title={SITE.home.sampleTitle} meta={SITE.home.sampleMeta} sample />}
         </div>
       </section>
 

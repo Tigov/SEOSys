@@ -8,6 +8,7 @@ from typing import Any
 from .adapters.llm import Writer
 from .crawler import crawl
 from .db import ClientRepo, Database, now
+from .plans import PLANS
 from .policy import lint
 from .rules import health_score, run_rules
 from .visibility import metrics as visibility_metrics
@@ -80,15 +81,24 @@ async def grade(db: Database, url: str, email: str | None, business_name: str | 
         return health_score([f for f in findings if f["rule_id"] in rules])
 
     top = sorted(findings, key=lambda f: (SEVERITY_ORDER[f["severity"]], -f["impact"]))[:6]
+    areas = {"Technical health": tech_rules, "On-page basics": onpage_rules, "AI and local readiness": ai_rules}
+
+    def area_of(rule_id: str) -> str:  # a rule not listed above counts as technical
+        return next((name for name, rules in areas.items() if rule_id in rules), "Technical health")
+
+    # The visitor only learns how much is wrong and how serious it is. What exactly is wrong, and how to fix it,
+    # is the paid work, so it stays in the lead record for us.
     out = {
-        "url": url, "pages_checked": len(rows), "score": health_score(findings),
-        "sections": {"Technical health": section(tech_rules), "On-page basics": section(onpage_rules),
-                     "AI and local readiness": section(ai_rules)},
-        "issue_counts": dict(by_rule),
-        "top_issues": [{"severity": f["severity"], "title": f["title"], "fix_hint": f["fix_hint"]} for f in top],
+        "url": url, "pages_checked": len(rows), "score": health_score(findings), "total_issues": len(findings),
+        "by_severity": {s: sum(f["severity"] == s for f in findings) for s in SEVERITY_ORDER},
+        "areas": [{"name": name, "score": section(rules), "issues": sum(area_of(f["rule_id"]) == name for f in findings)}
+                  for name, rules in areas.items()],
+        "plan": {"id": "technical", "name": PLANS["technical"].name},
     }
+    detail = {**out, "issue_counts": dict(by_rule),
+              "top_issues": [{"severity": f["severity"], "title": f["title"], "fix_hint": f["fix_hint"]} for f in top]}
     db.insert("leads", {"url": url, "email": email, "business_name": business_name, "city": city,
-                        "score": out["score"], "result": out, "user_id": user_id, "created_at": now()})
+                        "score": out["score"], "result": detail, "user_id": user_id, "created_at": now()})
     db.log(None, "grader", "grader.run", url, {"score": out["score"], "lead": bool(email)})
     return out
 

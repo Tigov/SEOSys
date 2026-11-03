@@ -35,7 +35,7 @@ from .permissions import ACTIONS, CHANGE_ACTIONS, STATUS_ALLOWS, Access, require
 from .plans import PLANS
 
 log = logging.getLogger("seo_platform")
-HEAD_REVISION = "0004"  # the newest migration in backend/migrations/versions
+HEAD_REVISION = "0005"  # the newest migration in backend/migrations/versions
 STATIC_DIR = Path(__file__).with_name("static")
 UNSAFE = {"POST", "PUT", "PATCH", "DELETE"}
 CSRF_EXEMPT = {"/api/billing/webhook"}
@@ -65,7 +65,7 @@ class ClientIn(BaseModel):
     services: list[str] = Field([], max_length=50)
     competitors: list[str] = Field([], max_length=50)
     site_url: HttpUrl
-    cms: Literal["wordpress", "shopify", "github", "other"] = "wordpress"
+    cms: Literal["wordpress", "shopify", "wix", "squarespace", "github", "other"] = "wordpress"
     site_secret: str = Field("", max_length=200)
 
 
@@ -104,7 +104,7 @@ class TransferIn(BaseModel):
 
 class SiteIn(BaseModel):
     base_url: HttpUrl
-    cms: Literal["wordpress", "shopify", "github", "other"] = "wordpress"
+    cms: Literal["wordpress", "shopify", "wix", "squarespace", "github", "other"] = "wordpress"
 
 
 class CheckoutIn(BaseModel):
@@ -274,7 +274,7 @@ def create_app(db: Database | None = None) -> FastAPI:
     # ---------- agency (admin) ----------
     @app.get("/api/leads")
     def leads(a: Access = Depends(require("admin"))) -> list[dict[str, Any]]:
-        return database.query("SELECT id, url, email, business_name, city, score, created_at FROM leads ORDER BY id DESC")
+        return database.query("SELECT id, url, email, business_name, city, score, result, created_at FROM leads ORDER BY id DESC")
 
     @app.get("/api/clients")
     def list_clients(a: Access = Depends(require("admin"))) -> list[dict[str, Any]]:

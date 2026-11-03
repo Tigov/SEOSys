@@ -34,12 +34,11 @@ export function Grader() {
           <div className="health-score"><span className="health-number">{result.score}</span><span className="health-of">/100 overall, {result.pages_checked} pages checked</span></div>
           <Meter value={result.score} />
           <dl className="sections">
-            {Object.entries(result.sections).map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}/100</dd></div>)}
+            {result.areas.map((a) => <div key={a.name}><dt>{a.name}</dt><dd>{a.score}/100</dd></div>)}
           </dl>
-          <h2>Fix these first</h2>
           <ul className="issues">
-            {result.top_issues.map((i) => (
-              <li key={i.title}><Severity level={i.severity} /><div><strong>{i.title}</strong><p className="muted">{i.fix_hint}</p></div></li>
+            {(["critical", "high", "medium", "low"] as const).map((s) => (
+              <li key={s}><Severity level={s} /><div><strong>{result.by_severity[s]}</strong></div></li>
             ))}
           </ul>
         </section>

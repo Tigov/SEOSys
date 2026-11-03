@@ -137,9 +137,18 @@ def test_visibility_improves_after_fixes(audited):
 
 
 def test_grader_and_report(api):
-    out = api.post("/api/grader", json={"url": "http://127.0.0.1:8001", "email": "owner@example.com"}).json()
-    assert 0 <= out["score"] < 100 and out["top_issues"]
-    assert api.get("/api/leads", headers=STAFF).json()[0]["email"] == "owner@example.com"
+    r = api.post("/api/grader", json={"url": "http://127.0.0.1:8001", "email": "owner@example.com"})
+    out = r.json()
+    assert 0 <= out["score"] < 100 and out["total_issues"] > 0
+    assert sum(out["by_severity"].values()) == out["total_issues"]
+    assert set(out["by_severity"]) == {"critical", "high", "medium", "low"}
+    assert sum(a["issues"] for a in out["areas"]) == out["total_issues"]
+    assert out["plan"] == {"id": "technical", "name": "Technical SEO"}
+    # The free check says how much is wrong, never what or how to fix it.
+    for secret in ("top_issues", "fix_hint", "issue_counts", "title", "missing_", "rule"):
+        assert secret not in r.text
+    lead = api.get("/api/leads", headers=STAFF).json()[0]
+    assert lead["email"] == "owner@example.com" and lead["result"]["top_issues"][0]["fix_hint"]
     api.post("/api/clients/1/audits", headers=STAFF)
     html = api.get("/api/clients/1/report", headers=CLIENT).text
     assert "Monthly SEO report" in html and "simulated" in html

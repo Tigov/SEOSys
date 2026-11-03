@@ -440,7 +440,13 @@ input:focus-visible, select:focus-visible { border-color: var(--ink); }
 .report-list { list-style: none; padding: 0; margin: 14px 0 0; display: flex; flex-direction: column; gap: 12px; }
 .report-list li { display: grid; grid-template-columns: 112px 1fr; gap: 12px; align-items: baseline; font-size: 15px; }
 .report-list .sev { justify-self: start; }
-.report-cta { margin-top: 18px; }
+.report-cta { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--rule-soft); }
+.report-cta p { margin: 0 0 8px; }
+.report-cta .row { margin-top: 14px; flex-wrap: wrap; }
+.report-total { margin: 16px 0 0; font-size: 17px; font-weight: 600; }
+.report-sevs { list-style: none; padding: 0; margin: 12px 0 0; display: flex; flex-wrap: wrap; gap: 8px 20px; }
+.report-count { font: 600 18px/1 var(--num); }
+.report-list.report-areas li { grid-template-columns: 1fr auto; }
 .page .report-card { margin-top: 8px; max-width: 720px; }
 
 .band { padding: clamp(40px, 6vw, 80px) var(--gutter); max-width: 1180px; margin: 0 auto; }

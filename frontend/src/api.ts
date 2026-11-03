@@ -36,8 +36,10 @@ export interface Visibility {
 export interface AuditEvent { id: number; actor: string; action: string; target: string; detail: Record<string, unknown>; at: string }
 export interface Usage { client_id: number; vendor: string; qty: number; cost_usd: number }
 export interface GradeResult {
-  url: string; pages_checked: number; score: number; sections: Record<string, number>;
-  top_issues: { severity: string; title: string; fix_hint: string }[];
+  url: string; pages_checked: number; score: number; total_issues: number;
+  by_severity: Record<"critical" | "high" | "medium" | "low", number>;
+  areas: { name: string; score: number; issues: number }[];
+  plan: { id: string; name: string };
 }
 
 export interface GoogleStatus {
