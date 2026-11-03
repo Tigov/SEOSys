@@ -238,7 +238,7 @@ export const SITE = {
     promises: [
       "Your website, accounts and content stay yours.",
       "Every change is recorded, and any change can be undone.",
-      "We report on visitors and enquiries from search, not just rankings.",
+      "We report on the visitors and searches that reach you, not just rankings.",
       "We never promise a spot on Google, because nobody honestly can.",
     ],
   },
@@ -271,7 +271,7 @@ export const SITE = {
         "Websites don't stay fixed, though. New pages, plugin updates and theme changes break things. Google changes how it ranks pages several times a year, and competitors keep improving. A monthly package catches new problems as they appear, reports what changed, and keeps building on what's working.",
       ] },
       { q: "What's the difference between the SEO Audit and the SEO Fix-Up?", a: [
-        "The SEO Audit is a full check and a 90-day plan in plain English, so you or your web person can make the fixes. The SEO Fix-Up includes the audit, and we make the fixes for you.",
+        "The SEO Audit checks your whole website once and lists every issue, most important first, with how to fix it. You or your web person make the fixes. The SEO Fix-Up includes the audit, and we make the fixes for you.",
       ] },
       { q: "Do you guarantee a top spot on Google?", a: [
         "No. Nobody can honestly promise a ranking, and anyone who does is a reason to be careful. We show you every change we make and what it did.",
