@@ -1,6 +1,6 @@
-# SEOSys
+# Indexora
 
-SEOSys is a software-led SEO service for local businesses. It is a public website with a free website check and
+Indexora is a software-led SEO service for local businesses. It is a public website with a free website check and
 online sign-up, a client portal, and an agency console, all in one app. The work loop at its heart:
 
 **crawl a client site → find problems with evidence → draft fixes → client approves → deploy through the site's plugin → re-check the live page → roll back automatically if anything broke → report.**
@@ -17,7 +17,7 @@ Node is only needed if you change the portal.
    login, and optionally `SEED_DEMO_PASSWORD` for the demo people.
 2. Double-click **`start.bat`**. It starts Postgres and Mailpit in Docker, migrates the database, creates the admin
    and demo data, and opens **http://localhost:8000**.
-3. Log in as the admin. You'll be asked to set up two-step login with an authenticator app the first time.
+3. Log in as the admin. Two-step login is optional; turn it on from the **Account** page.
 4. Press **Ctrl+C** to stop the app. `docker compose stop` stops the database and mail catcher.
 
 | What | Where |
@@ -37,7 +37,7 @@ run `start.bat -Reset`.
 ## Who can do what
 
 - **Admin** (the agency): every client, audits, drafting and deploying changes, the People page and security log.
-  Two-step login is required. The admin can't approve changes for a client.
+  The admin can't approve changes for a client.
 - **Client owner**: their dashboard, approving changes, settings, team, billing and data export.
 - **Client member**: sees everything for their business. Can approve changes only if the owner ticks "Can approve".
 - **Signed in, no package**: the public site plus their account, and can buy a package.
@@ -48,8 +48,8 @@ row-level security keeps each client's rows apart as a second lock.
 ## Security, briefly
 
 Passwords use argon2id with a breached-password blocklist; sessions live in Postgres behind an HttpOnly cookie; every
-change sends a CSRF token; lockouts and rate limits per email and IP; optional two-step login (required for the
-admin); Google tokens, website keys and two-step secrets are encrypted at rest; strict security headers; nothing in
+change sends a CSRF token; lockouts and rate limits per email and IP; optional two-step login for every account, turned on
+from the Account page; Google tokens, website keys and two-step secrets are encrypted at rest; strict security headers; nothing in
 answers, emails or timing reveals whether an email has an account. Details: the
 [design spec](docs/superpowers/specs/2026-10-31-production-foundation-design.md).
 

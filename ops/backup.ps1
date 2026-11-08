@@ -1,4 +1,4 @@
-# Backs up the SEOSys database to a compressed dump file.
+# Backs up the Indexora database to a compressed dump file.
 #   Local:       .\ops\backup.ps1                       (uses the Postgres in docker-compose.yml)
 #   Production:  .\ops\backup.ps1 -Url $env:DATABASE_OWNER_URL -Out D:\backups
 param([string]$Url = "", [string]$Out = (Join-Path $env:LOCALAPPDATA "ProjectSEOSys\backups"))

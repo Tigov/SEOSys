@@ -1,6 +1,6 @@
 # Production checklist
 
-Moving SEOSys from this PC to a hosted environment is configuration, not code. Work down this list.
+Moving Indexora from this PC to a hosted environment is configuration, not code. Work down this list.
 The app refuses to start with `APP_ENV=production` while any of the checks it can see are failing.
 
 ## Before the first real customer
@@ -36,8 +36,8 @@ See [environment.md](environment.md) for every variable. Required in production:
 
 ## First admin
 
-Set `SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSWORD`, run `python -m seo_platform seed` once, log in and set up two-step
-login, then remove `SEED_ADMIN_PASSWORD` from the environment.
+Set `SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSWORD`, run `python -m seo_platform seed` once, log in, turn on two-step
+login from the Account page (strongly recommended for the admin), then remove `SEED_ADMIN_PASSWORD` from the environment.
 
 ## Backups
 

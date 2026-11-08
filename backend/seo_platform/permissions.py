@@ -138,8 +138,6 @@ def require(action: str) -> Callable[..., Access]:
         if client_id is not None:
             if role == "none" or client is None:
                 raise HTTPException(404, f"Client {client_id} was not found.")
-            if client["require_mfa"] and role != "admin" and not principal.totp_enabled:
-                raise HTTPException(403, "mfa_setup_required")
         access = Access(principal, role, client_id, client, ClientRepo(db, client_id) if client_id is not None else None)
         access.check(action)
         return access

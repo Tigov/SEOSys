@@ -1,10 +1,10 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { api, post, type Client } from "./api";
-import { AcceptInvite, AccountPage, ConfirmEmailGate, Forgot, LinkGoogle, LogIn, Reset, SignUp, TwoStepCheck, TwoStepSetup, Verify } from "./account/Account";
+import { AcceptInvite, AccountPage, ConfirmEmailGate, Forgot, LinkGoogle, LogIn, Reset, SignUp, TwoStepCheck, Verify } from "./account/Account";
 import { AdminPeople } from "./admin/Admin";
 import { homeFor, useAuth } from "./auth";
 import { useLoad, useToast } from "./components/ui";
-import { PORTAL } from "./labels";
+import { BRAND, PORTAL } from "./labels";
 import { ClientView } from "./pages/ClientView";
 import { Clients } from "./pages/Clients";
 import { CheckPage, Home, Packages, SiteLayout, TagMark, TextPage, Welcome } from "./public/Site";
@@ -64,7 +64,7 @@ function Portal({ hash, children }: { hash: string; children: ReactNode }) {
       <aside className="rail">
         <a className="brand" href={me ? homeFor(me) : "#/"} data-testid="portal-home">
           <TagMark />
-          <span className="brand-text"><strong>SEOSys</strong><span>{admin ? PORTAL.agencyConsole : PORTAL.clientPortal}</span></span>
+          <span className="brand-text"><strong>{BRAND.name}</strong><span>{admin ? PORTAL.agencyConsole : PORTAL.clientPortal}</span></span>
         </a>
         <nav className="rail-nav" aria-label="Main">
           {admin && nav("#/admin", "clients", PORTAL.allClients, hash === "#/admin")}
@@ -132,7 +132,6 @@ export function App() {
   if (me?.gate === "mfa_required") return <SiteLayout hash={hash}><TwoStepCheck /></SiteLayout>;
   const confirmLink = path === "#/verify" || path === "#/invite";  // these pages confirm the address themselves
   if (me?.gate === "email_unverified" && !confirmLink) return <SiteLayout hash={hash}><ConfirmEmailGate /></SiteLayout>;
-  if (me?.gate === "mfa_setup_required") return <SiteLayout hash={hash}><TwoStepSetup required /></SiteLayout>;
 
   const portalPath = /^#\/(clients|admin|account)/.test(path);
   if (portalPath) {

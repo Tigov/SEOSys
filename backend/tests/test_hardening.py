@@ -67,13 +67,13 @@ def test_production_refuses_example_settings(monkeypatch):
 
 def test_production_requires_https_base_url(monkeypatch):
     good = {"APP_ENV": "production", "DATABASE_URL": "postgresql+psycopg://app:s3cret@db.internal:5432/seosys",
-            "APP_ENCRYPTION_KEY": "q" * 43 + "=", "APP_BASE_URL": "https://app.seosys.com", "ALLOW_PRIVATE_HOSTS": "false",
+            "APP_ENCRYPTION_KEY": "q" * 43 + "=", "APP_BASE_URL": "https://app.indexora.com", "ALLOW_PRIVATE_HOSTS": "false",
             "DEMO_SITE_SECRET": "not-the-default", "SMTP_HOST": "smtp.example.com", "SMTP_TLS": "true",
             "STRIPE_SECRET_KEY": "sk_live_x", "STRIPE_WEBHOOK_SECRET": "whsec_x"}
     for k, v in good.items():
         monkeypatch.setenv(k, v)
     assert production_problems(Settings()) == []
-    monkeypatch.setenv("APP_BASE_URL", "http://app.seosys.com")
+    monkeypatch.setenv("APP_BASE_URL", "http://app.indexora.com")
     assert production_problems(Settings()) == ["APP_BASE_URL must start with https://."]
 
 

@@ -14,7 +14,7 @@ is the source of truth.
 | `APP_ENCRYPTION_KEY_VERSION` | `1` | Bump when rotating |
 | `APP_ENCRYPTION_KEYS_OLD` | empty | `v1=<old key>` during a rotation |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_TLS` | Mailpit on 1025, no TLS | Your email provider, TLS on |
-| `MAIL_FROM` | `SEOSys <no-reply@seosys.local>` | An address on your domain |
+| `MAIL_FROM` | `Indexora <no-reply@indexora.local>` | An address on your domain |
 | `STRIPE_SECRET_KEY` | empty (buying disabled) | `sk_live_...` |
 | `STRIPE_WEBHOOK_SECRET` | empty | From the Stripe webhook endpoint |
 | `STRIPE_PRICE_TECHNICAL`, `STRIPE_PRICE_ONPAGE`, `STRIPE_PRICE_LOCAL`, `STRIPE_PRICE_COMPLETE`, `STRIPE_PRICE_AUDIT`, `STRIPE_PRICE_FIXUP` | empty (package shows "Talk to us") | Live price IDs |

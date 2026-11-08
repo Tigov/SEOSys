@@ -232,7 +232,7 @@ def update_profile(db: Database, principal: sessions.Principal, name: str) -> No
 
 def me(db: Database, principal: sessions.Principal) -> dict[str, Any]:
     memberships = db.query(
-        "SELECT m.client_id, c.name AS client_name, m.role, m.can_approve, c.status, c.plan, c.require_mfa "
+        "SELECT m.client_id, c.name AS client_name, m.role, m.can_approve, c.status, c.plan "
         "FROM memberships m JOIN clients c ON c.id = m.client_id WHERE m.user_id = ? ORDER BY c.name", (principal.user_id,))
     return {"user": {"id": principal.user_id, "email": principal.email, "name": principal.name,
                      "is_admin": principal.is_admin, "email_verified": principal.email_verified,

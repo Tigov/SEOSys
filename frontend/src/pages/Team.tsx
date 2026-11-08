@@ -82,12 +82,6 @@ export function Team({ s, refresh }: { s: Summary; refresh: () => void }) {
               </ul>
             </>
           )}
-          <label className="check sub-head">
-            <input type="checkbox" checked={!!s.client.require_mfa} data-testid="require-mfa"
-              onChange={(e) => run(() => patch(`${base}/settings`, { require_mfa: e.target.checked }), TEAM.requireTwoStep)} />
-            {TEAM.requireTwoStep}
-          </label>
-          {!me?.user.totp_enabled && !me?.user.is_admin && <p className="field-hint">{TEAM.requireNeedsYours}</p>}
         </section>
       )}
     </div>

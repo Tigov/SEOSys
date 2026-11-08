@@ -35,7 +35,7 @@ from .permissions import ACTIONS, CHANGE_ACTIONS, STATUS_ALLOWS, Access, require
 from .plans import PLANS, plan_covers, plan_for
 
 log = logging.getLogger("seo_platform")
-HEAD_REVISION = "0005"  # the newest migration in backend/migrations/versions
+HEAD_REVISION = "0006"  # the newest migration in backend/migrations/versions
 STATIC_DIR = Path(__file__).with_name("static")
 UNSAFE = {"POST", "PUT", "PATCH", "DELETE"}
 CSRF_EXEMPT = {"/api/billing/webhook"}
@@ -72,7 +72,6 @@ class ClientIn(BaseModel):
 class SettingsIn(BaseModel):
     auto_approve_low: bool | None = None
     freeze_deploys: bool | None = None
-    require_mfa: bool | None = None
 
 
 class BulkIn(BaseModel):
@@ -314,8 +313,6 @@ def create_app(db: Database | None = None) -> FastAPI:
         changes = {k: v for k, v in body.model_dump().items() if v is not None}
         if "auto_approve_low" in changes and a.role == "admin":
             raise PermissionError("Only the client can turn on auto-approval of low-risk changes.")
-        if changes.get("require_mfa") and a.role != "admin" and not (a.principal and a.principal.totp_enabled):
-            raise PermissionError("Turn on two-step login for yourself first, so you don't lock yourself out.")
         if changes:
             r.update_client(**changes)
             r.log(a.actor, "settings.updated", f"client:{client_id}", changes, actor_user_id=a.user_id)
@@ -641,7 +638,7 @@ def create_app(db: Database | None = None) -> FastAPI:
     else:
         @app.get("/", response_class=HTMLResponse)
         def no_portal() -> str:
-            return ("<h1>SEOSys API is running</h1><p>The portal has not been built yet. "
+            return ("<h1>Indexora API is running</h1><p>The portal has not been built yet. "
                     "Run <code>npm install && npm run build</code> in the frontend folder.</p>")
     return app
 

@@ -1,4 +1,4 @@
-"""Two-step login: setup, codes, replay, recovery codes and the admin requirement."""
+"""Two-step login: setup, codes, replay, recovery codes, and that nobody is forced to use it."""
 import pyotp
 import pytest
 
@@ -34,7 +34,7 @@ def test_setup_gives_otpauth_uri(api, make_user):
     setup = api.post("/api/auth/mfa/setup").json()
     uri = setup["otpauth_uri"]
     assert setup["qr"].startswith("data:image/svg+xml") and setup["secret"] not in setup["qr"]
-    assert uri.startswith("otpauth://totp/SEOSys:sam%40example.com?") and "issuer=SEOSys" in uri
+    assert uri.startswith("otpauth://totp/Indexora:sam%40example.com?") and "issuer=Indexora" in uri
 
 
 def test_enable_returns_ten_recovery_codes_and_emails(with_mfa, mail):
@@ -131,15 +131,16 @@ def test_regenerate_codes_replaces_old_ones(api, with_mfa):
     assert api.post("/api/auth/mfa/recovery", json={"code": new[0]}).status_code == 200
 
 
-def test_admin_must_set_up_mfa(api, make_user):
+def test_admin_is_not_forced_to_set_up_mfa(api, make_user):
     make_user("admin@example.com", admin=True)
     login(api, "admin@example.com")
-    assert api.get("/api/auth/me").json()["gate"] == "mfa_setup_required"
+    assert api.get("/api/auth/me").json()["gate"] is None
 
 
-def test_admin_cannot_disable_mfa(api, make_user):
+def test_admin_can_turn_mfa_off(api, make_user):
     make_user("admin@example.com", admin=True)
     login(api, "admin@example.com")
     secret = api.post("/api/auth/mfa/setup").json()["secret"]
     api.post("/api/auth/mfa/enable", json={"code": code_for(secret)})
-    assert api.post("/api/auth/mfa/disable", json={"password": GOOD_PASSWORD}).status_code == 403
+    assert api.post("/api/auth/mfa/disable", json={"password": GOOD_PASSWORD}).status_code == 200
+    assert api.get("/api/auth/me").json()["user"]["totp_enabled"] is False

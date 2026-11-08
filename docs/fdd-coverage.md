@@ -1,4 +1,4 @@
-# What SEOSys covers from the FDD
+# What Indexora covers from the FDD
 
 | FDD module | Requirement IDs exercised | Where |
 | --- | --- | --- |

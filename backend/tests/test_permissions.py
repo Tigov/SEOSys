@@ -79,12 +79,11 @@ def test_admin_blocked_until_mfa_passed(api, db):
     assert r.status_code == 403 and r.json()["detail"] == "mfa_required"
 
 
-def test_require_mfa_client_forces_setup(api):
-    assert api.patch("/api/clients/1/settings", json={"require_mfa": True}, headers=CLIENT).status_code == 403  # owner has none
-    api.patch("/api/clients/1/settings", json={"require_mfa": True}, headers=STAFF)
-    r = api.get("/api/clients/1", headers=MEMBER)
-    assert r.status_code == 403 and r.json()["detail"] == "mfa_setup_required"
-    assert api.get("/api/clients/1", headers=STAFF).status_code == 200
+def test_teams_cannot_require_two_step_login(api):
+    """Two-step login is each person's own choice; the old team-wide switch is gone."""
+    r = api.patch("/api/clients/1/settings", json={"require_mfa": True}, headers=CLIENT)
+    assert r.status_code == 200 and "require_mfa" not in r.json()
+    assert api.get("/api/clients/1", headers=MEMBER).status_code == 200
 
 
 def test_permission_table_is_published(api):

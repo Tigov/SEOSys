@@ -143,7 +143,7 @@ function groups(secret: string) {
   return secret.replace(/(.{4})/g, "$1 ").trim();
 }
 
-export function TwoStepSetup({ required, onDone }: { required?: boolean; onDone?: () => void }) {
+export function TwoStepSetup({ onDone }: { onDone?: () => void }) {
   const { refresh } = useAuth();
   const [setup, setSetup] = useState<{ otpauth_uri: string; secret: string; qr: string } | null>(null);
   const [codes, setCodes] = useState<string[] | null>(null);
@@ -161,7 +161,7 @@ export function TwoStepSetup({ required, onDone }: { required?: boolean; onDone?
     </AuthCard>
   );
   return (
-    <AuthCard title={A.mfa.setupTitle} lede={required ? A.mfa.requiredLede : A.mfa.setupLede}>
+    <AuthCard title={A.mfa.setupTitle} lede={A.mfa.setupLede}>
       {!setup ? (
         <form onSubmit={begin.onSubmit} className="form">
           {begin.error && <p className="form-error" role="alert">{begin.error}</p>}

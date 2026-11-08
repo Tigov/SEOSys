@@ -1,4 +1,4 @@
-# Starts SEOSys on Windows.
+# Starts Indexora on Windows.
 #   Portal + API        : http://localhost:8000   (API docs at /docs in development)
 #   Email inbox (local) : http://localhost:8025
 #   Demo client website : http://127.0.0.1:8001

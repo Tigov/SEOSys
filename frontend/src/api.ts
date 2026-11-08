@@ -1,10 +1,10 @@
-// Thin typed client for the SEOSys API. The session lives in an HttpOnly cookie; changes also send its CSRF token.
+// Thin typed client for the Indexora API. The session lives in an HttpOnly cookie; changes also send its CSRF token.
 
 export interface Client {
   id: number; name: string; city: string; region: string; phone: string;
   services: string[]; competitors: string[]; auto_approve_low: boolean; freeze_deploys: boolean;
   monthly_budget_usd: number; health_score?: number | null; waiting_on_client?: number;
-  status?: ClientStatus; plan?: string | null; require_mfa?: boolean;
+  status?: ClientStatus; plan?: string | null;
 }
 export interface Site { id: number; base_url: string; cms: string }
 export interface Alert { id: number; level: string; message: string; at: string }
@@ -68,13 +68,13 @@ export interface PageSpeed {
 // ---------- accounts ----------
 export interface Membership {
   client_id: number; client_name: string; role: "owner" | "member"; can_approve: boolean; status: ClientStatus;
-  plan: string | null; require_mfa: boolean;
+  plan: string | null;
 }
 export type ClientStatus = "active" | "past_due" | "cancelled" | "closed";
 export interface Me {
   user: { id: number; email: string; name: string; is_admin: boolean; email_verified: boolean; totp_enabled: boolean };
   mfa_passed: boolean; csrf_token: string; memberships: Membership[];
-  gate: "mfa_required" | "email_unverified" | "mfa_setup_required" | null; recovery_codes_left: number | null;
+  gate: "mfa_required" | "email_unverified" | null; recovery_codes_left: number | null;
 }
 export interface Plan { id: string; name: string; mode: "subscription" | "payment"; price_label: string; summary: string; includes: string[]; available: boolean; coming_soon: boolean }
 export interface SessionRow { id: string; current: boolean; created_at: string; last_seen_at: string; ip: string | null; user_agent: string }

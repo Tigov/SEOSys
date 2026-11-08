@@ -15,5 +15,5 @@ cd "$ROOT/backend"
 "$PY" -m seo_platform seed --demo
 "$PY" -m uvicorn demo_site.app:app --port 8001 & DEMO=$!
 trap 'kill $DEMO 2>/dev/null' EXIT
-echo "SEOSys: http://localhost:8000   Email inbox: http://localhost:8025   Demo site: http://127.0.0.1:8001"
+echo "Indexora: http://localhost:8000   Email inbox: http://localhost:8025   Demo site: http://127.0.0.1:8001"
 "$PY" -m uvicorn seo_platform.api:app --port 8000

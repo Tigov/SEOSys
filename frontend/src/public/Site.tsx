@@ -1,9 +1,9 @@
-// The public website: what SEOSys does, the packages, the free website check, and the legal pages.
+// The public website: what Indexora does, the packages, the free website check, and the legal pages.
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { ApiError, api, post, type GradeResult, type Plan } from "../api";
 import { homeFor, useAuth } from "../auth";
 import { useLoad, useToast } from "../components/ui";
-import { SITE } from "../labels";
+import { BRAND, SITE } from "../labels";
 
 export function TagMark() {
   // An inspection tag: the brand mark for a team that inspects and fixes websites.
@@ -25,7 +25,7 @@ export function SiteLayout({ hash, children }: { hash: string; children: ReactNo
   return (
     <div className="site">
       <header className="site-bar">
-        <a className="site-brand" href="#/" data-testid="site-home"><TagMark /><span>SEOSys</span></a>
+        <a className="site-brand" href="#/" data-testid="site-home"><TagMark /><span>{BRAND.name}</span></a>
         <button type="button" className="site-menu" aria-expanded={open} aria-controls="site-nav" onClick={() => setOpen(!open)}
           data-testid="site-menu">{SITE.menu}</button>
         <nav id="site-nav" className={`site-nav${open ? " open" : ""}`} aria-label="Site">
@@ -51,7 +51,10 @@ export function SiteLayout({ hash, children }: { hash: string; children: ReactNo
       <main className="site-main">{children}</main>
       <footer className="site-foot">
         <div className="site-foot-inner">
-          <p><strong>SEOSys</strong>. {SITE.promise}</p>
+          <div>
+            <p><strong>{BRAND.name}</strong>. {SITE.promise}</p>
+            <p className="site-foot-legal">{SITE.copyright(new Date().getFullYear())}</p>
+          </div>
           <nav aria-label="Legal" className="row">
             <a href="#/privacy">{SITE.nav.privacy}</a>
             <a href="#/terms">{SITE.nav.terms}</a>

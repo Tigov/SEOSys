@@ -131,7 +131,7 @@ def test_checkout_completed_creates_client_owner_subscription_and_welcome(api, b
     assert client["name"] == "Sam's Plumbing" and client["status"] == "active" and client["plan"] == "technical"
     assert db.one("SELECT role FROM memberships WHERE user_id = ?", (uid,))["role"] == "owner"
     assert db.one("SELECT status FROM subscriptions WHERE client_id = ?", (client["id"],))["status"] == "active"
-    assert mail().to("buyer@example.com")[-1]["Subject"] == "Welcome to SEOSys"
+    assert mail().to("buyer@example.com")[-1]["Subject"] == "Welcome to Indexora"
     assert browser.get(f"/api/clients/{client['id']}").json()["my_role"] == "owner"
 
 

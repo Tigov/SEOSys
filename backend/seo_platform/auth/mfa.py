@@ -123,8 +123,6 @@ def _prove(db: Database, user: dict[str, Any], password: str, code: str) -> None
 
 
 def disable(db: Database, principal: sessions.Principal, password: str, code: str) -> None:
-    if principal.is_admin:
-        raise AuthError("Two-step login is required for the admin account.", 403)
     user = _user(db, principal.user_id)
     if not user["totp_enabled_at"]:
         return
@@ -154,12 +152,11 @@ def remaining_codes(db: Database, user_id: int) -> int:
 
 
 def gate(principal: sessions.Principal) -> str | None:
-    """What stands between this session and the app: 'mfa_required', 'email_unverified', 'mfa_setup_required', or None."""
+    """What stands between this session and the app: 'mfa_required', 'email_unverified', or None. Two-step login is
+    optional for everyone, so it only stands in the way once someone has turned it on."""
     if principal.totp_enabled and not principal.mfa_passed:
         return "mfa_required"
     if not principal.email_verified:
         return "email_unverified"
-    if principal.is_admin and not principal.totp_enabled:
-        return "mfa_setup_required"
     return None
 

@@ -1,4 +1,4 @@
-# Local services for SEOSys. Start with:  docker compose up -d --wait
+# Local services for Indexora. Start with:  docker compose up -d --wait
 #   Postgres : localhost:5432  (databases seosys and seosys_test)
 #   Mailpit  : SMTP localhost:1025, inbox http://localhost:8025
 # The app itself runs on the host (start.bat) so it is easy to debug.

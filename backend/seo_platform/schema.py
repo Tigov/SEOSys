@@ -84,7 +84,7 @@ clients = Table(
     Column("name", Text, nullable=False),
     _text("city"), _text("region"), _text("phone"), _text("street"), _text("postal_code"),
     _json("services"), _json("competitors"),
-    _flag("auto_approve_low"), _flag("freeze_deploys"), _flag("require_mfa"),
+    _flag("auto_approve_low"), _flag("freeze_deploys"),
     Column("monthly_budget_usd", MONEY, nullable=False, server_default=text("80")),
     Column("status", Text, nullable=False, server_default="active"),
     Column("plan", Text),

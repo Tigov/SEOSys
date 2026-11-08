@@ -147,7 +147,7 @@ def create_app(state_path: Path | None = STATE_PATH, secret: str = SECRET) -> Fa
         return body
 
     # ---------- signed "plugin" API (what the platform's adapter calls) ----------
-    api = "/wp-json/seosys/v1"
+    api = "/wp-json/indexora/v1"
 
     @app.get(api + "/pages")
     async def list_pages(request: Request) -> JSONResponse:

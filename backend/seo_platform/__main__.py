@@ -68,8 +68,8 @@ def stripe_setup(write_env: str | None) -> dict[str, str]:
         if existing:
             found[plan.price_env] = existing[0].id
             continue
-        product = client.v1.products.create(params={"name": f"SEOSys {plan.name}", "description": plan.summary,
-                                                    "metadata": {"seosys_plan": plan.id}})
+        product = client.v1.products.create(params={"name": f"Indexora {plan.name}", "description": plan.summary,
+                                                    "metadata": {"indexora_plan": plan.id}})
         price: dict = {"product": product.id, "currency": "usd", "unit_amount": plan.amount_cents, "lookup_key": key}
         if plan.mode == "subscription":
             price["recurring"] = {"interval": "month"}

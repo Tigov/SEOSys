@@ -1,14 +1,17 @@
 // Turns internal identifiers into the words people see. Keep every user-facing name here so it stays consistent.
 
+// The product name people see, and the company that runs it.
+export const BRAND = { name: "Indexora", company: "Indexora LLC" };
+
 // Actors are logged as "<role>:<name>", e.g. "admin:Viktor" or "owner:Sam Smith".
 export function actorName(actor: string | null | undefined): string {
   if (!actor) return "System";
   if (actor.startsWith("auto")) return "Auto-approved (client setting)";
   const [role, ...rest] = actor.split(":");
   const name = rest.join(":");
-  if (role === "admin") return name ? `${name} (SEOSys)` : "SEOSys";
+  if (role === "admin") return name ? `${name} (Indexora)` : "Indexora";
   if (["owner", "member", "approver"].includes(role)) return name || "Client";
-  if (role === "staff") return "SEOSys";
+  if (role === "staff") return "Indexora";
   if (role === "client") return "Client owner";
   if (role === "system" || role === "stripe" || role === "grader") return role === "stripe" ? "Payments" : "System";
   return sentence(actor);
@@ -44,7 +47,7 @@ const ACTIONS: Record<string, string> = {
   "team.updated": "Approval rights changed", "team.removed": "Removed from the team",
   "team.ownership_transferred": "Ownership transferred",
   "billing.checkout_started": "Started checkout", "billing.purchased": "Package bought",
-  "billing.status_changed": "Account status changed", "billing.activated_manually": "Marked active by SEOSys",
+  "billing.status_changed": "Account status changed", "billing.activated_manually": "Marked active by Indexora",
   "user.signed_up": "Account created", "user.email_verified": "Email confirmed", "user.logged_in": "Logged in",
   "user.password_reset": "Password reset", "user.password_changed": "Password changed",
   "user.mfa_enabled": "Two-step login turned on", "user.mfa_disabled": "Two-step login turned off",
@@ -194,6 +197,7 @@ type Section = { heading?: string; body: string[] };
 export const SITE = {
   menu: "Menu",
   promise: "You own everything. Every change is logged and can be undone.",
+  copyright: (year: number) => `© ${year} ${BRAND.company}`,
   nav: {
     how: "How it works", packages: "Packages", check: "Free website check", about: "About", contact: "Contact",
     privacy: "Privacy", terms: "Terms", login: "Log in", signup: "Create account", logout: "Log out",
@@ -223,7 +227,7 @@ export const SITE = {
   },
   home: {
     title: "We find what's holding your website back, and fix it with your OK.",
-    lede: "SEOSys checks your website the way a good inspector checks a house, then fixes the problems for you each month. Nothing changes until you approve it.",
+    lede: "Indexora checks your website the way a good inspector checks a house, then fixes the problems for you each month. Nothing changes until you approve it.",
     sampleLabel: "Example of a website check",
     sampleTitle: "Example report",
     sampleMeta: "12 pages checked on a plumber's website",
@@ -297,22 +301,23 @@ export const SITE = {
   },
   pages: {
     how: { title: "How it works", sections: [
-      { body: ["SEOSys is an SEO service for small and local businesses, run by real people and backed by software that does the checking for us."] },
+      { body: ["Indexora is an SEO service for small and local businesses, run by real people and backed by software that does the checking for us."] },
       { heading: "1. Start with a free check", body: ["Enter your website address and see your biggest problems in about a minute. No account needed."] },
       { heading: "2. Pick a package", body: ["Choose monthly help with Technical, On-Page or Complete SEO, or a one-off Audit or Fix-Up, then create an account and pay securely through Stripe. Your dashboard opens straight away."] },
       { heading: "3. Connect your website and Google", body: ["Install our small WordPress plugin, or give us access another way, and connect Google Search Console and Analytics with a few clicks. We only ask to read your Google data, never to change it."] },
       { heading: "4. Approve, and watch it improve", body: ["Each month we send fixes for your approval, make the ones you approve, and check that each one worked. Your report shows what changed and what it did for you."] },
     ] as Section[] },
-    about: { title: "About SEOSys", sections: [
+    about: { title: "About Indexora", sections: [
       { body: ["We help local businesses get found: on Google, on maps, and in the answers AI assistants give when someone asks for a recommendation."] },
       { body: ["Most SEO agencies sell hours and send long reports. We'd rather fix things. Our software does the inspecting, so our time goes into the changes that matter, and you approve every one."] },
     ] as Section[] },
     contact: { title: "Contact", sections: [
       { body: ["Questions about a package, an invoice or your account? Email us and a person will reply within one working day."] },
-      { body: ["hello@seosys.local"] },
+      { body: ["hello@indexora.local"] },
     ] as Section[] },
     privacy: { title: "Privacy policy", sections: [
-      { body: ["Working draft. This page needs review by a lawyer before SEOSys takes real customers."] },
+      { body: ["Working draft. This page needs review by a lawyer before Indexora takes real customers."] },
+      { heading: "Who we are", body: ["Indexora is run by Indexora LLC, which is responsible for the information described on this page. \"We\" on this page means Indexora LLC."] },
       { heading: "What we collect", body: ["Your name, email address and business details; the pages of your website that we check; and, if you connect Google, read-only reports from Search Console and Analytics."] },
       { heading: "How we use it", body: ["Only to run the service you pay for: checking your website, preparing and making changes you approve, and reporting results. We don't sell your data."] },
       { heading: "Who else sees it", body: ["Stripe handles payments, and our email provider sends account emails. Neither gets more than it needs."] },
@@ -320,7 +325,8 @@ export const SITE = {
       { heading: "Your choices", body: ["You can download all your data or ask us to delete it at any time. When you cancel, your account stays readable for 30 days, closes, and is deleted 30 days after that."] },
     ] as Section[] },
     terms: { title: "Terms of service", sections: [
-      { body: ["Working draft. This page needs review by a lawyer before SEOSys takes real customers."] },
+      { body: ["Working draft. This page needs review by a lawyer before Indexora takes real customers."] },
+      { heading: "Who we are", body: ["Indexora is provided by Indexora LLC. \"We\" in these terms means Indexora LLC."] },
       { heading: "The service", body: ["We check your website, suggest changes, and make the changes you approve. We don't guarantee any ranking, because no one can."] },
       { heading: "Payment and cancelling", body: ["Monthly packages run for an initial three months, then month to month. Cancel with 30 days' notice from your dashboard."] },
       { heading: "Your content", body: ["Everything we make for you is yours. You can export it whenever you like."] },
@@ -342,7 +348,7 @@ export const ACCOUNT = {
     agree: "By creating an account you agree to the", terms: "terms", and: "and", privacy: "privacy policy",
   },
   login: {
-    title: "Log in", button: "Log in", noAccount: "New to SEOSys?", forgot: "Forgot your password?",
+    title: "Log in", button: "Log in", noAccount: "New to Indexora?", forgot: "Forgot your password?",
   },
   google: {
     signup: "Sign up with Google", login: "Log in with Google", linkTitle: "Google sign-in",
@@ -360,7 +366,6 @@ export const ACCOUNT = {
     useRecovery: "Use a recovery code instead", useApp: "Use my authenticator app instead", notYou: "Log out",
     setupTitle: "Turn on two-step login",
     setupLede: "Each time you log in, you'll also enter a code from an app on your phone, so a stolen password isn't enough.",
-    requiredLede: "Your account needs two-step login before you can continue. It takes about a minute.",
     begin: "Start", step1: "Open an authenticator app on your phone, such as Google Authenticator, Microsoft Authenticator or 1Password.",
     scan: "Add an account in the app and scan this code.", qrAlt: "QR code to scan with your authenticator app",
     cantScan: "Can't scan it?", step2: "Type in this setup key instead:", openApp: "On this phone? Open it in your app", step3: "Enter the 6-digit code the app shows.",
@@ -424,7 +429,7 @@ export const PORTAL = {
 
 export const ADMIN = {
   title: "People", person: "Person", access: "Access", security: "Security", lastLogin: "Last login",
-  agency: "SEOSys admin", noPackage: "No package yet", verified: "Email confirmed", unverified: "Email not confirmed",
+  agency: "Indexora admin", noPackage: "No package yet", verified: "Email confirmed", unverified: "Email not confirmed",
   twoStep: "two-step login", google: "Google sign-in", suspended: "Suspended", never: "Never",
   suspend: "Suspend", reactivate: "Reactivate", role: { owner: "owner", member: "member" } as Record<string, string>,
   confirmSuspend: (who: string) => `Suspend ${who}? They'll be logged out everywhere and can't log in until you reactivate them.`,
@@ -440,8 +445,7 @@ export const TEAM = {
   cancel: "Cancel invitation", remove: "Remove", makeOwner: "Make owner",
   confirmRemove: (name: string) => `Remove ${name} from the team? They'll lose access straight away.`,
   confirmOwner: (name: string) => `Make ${name} the owner? You'll stay on the team and can still approve changes, but they'll manage billing and the team.`,
-  approveToggle: "Can approve", requireTwoStep: "Require two-step login for everyone on the team",
-  requireNeedsYours: "Turn on two-step login for yourself first.",
+  approveToggle: "Can approve",
 };
 
 export const BILLING = {
@@ -455,6 +459,6 @@ export const SITE_SETUP = {
   url: "Website address", platform: "What it's built with", save: "Save website",
   platforms: { wordpress: "WordPress", wix: "Wix", squarespace: "Squarespace", shopify: "Shopify", github: "Custom code (GitHub)", other: "Something else" } as Record<string, string>,
   keyTitle: "Your plugin key",
-  keyLede: "Paste this key into the SEOSys plugin settings in WordPress. It's shown only once. If you lose it, save your website again to get a new one.",
+  keyLede: "Paste this key into the Indexora plugin settings in WordPress. It's shown only once. If you lose it, save your website again to get a new one.",
   done: "Done",
 };

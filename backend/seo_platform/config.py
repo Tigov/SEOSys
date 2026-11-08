@@ -29,7 +29,7 @@ def _list(name: str) -> tuple[str, ...]:
 @dataclass(frozen=True)
 class Settings:
     app_env: str = field(default_factory=lambda: _env("APP_ENV", "development"))
-    app_name: str = "SEOSys"
+    app_name: str = "Indexora"
     app_base_url: str = field(default_factory=lambda: _env("APP_BASE_URL", "http://localhost:8000").rstrip("/"))
 
     # Postgres. The app connects as a role that owns nothing (row-level security applies); migrations use the owner.
@@ -48,7 +48,7 @@ class Settings:
     smtp_user: str = field(default_factory=lambda: _env("SMTP_USER"))
     smtp_password: str = field(default_factory=lambda: _env("SMTP_PASSWORD"))
     smtp_tls: bool = field(default_factory=lambda: _bool("SMTP_TLS", False))
-    mail_from: str = field(default_factory=lambda: _env("MAIL_FROM", "SEOSys <no-reply@seosys.local>"))
+    mail_from: str = field(default_factory=lambda: _env("MAIL_FROM", "Indexora <no-reply@indexora.local>"))
 
     # Stripe (test mode locally).
     stripe_secret_key: str = field(default_factory=lambda: _env("STRIPE_SECRET_KEY"))
@@ -64,7 +64,7 @@ class Settings:
     # Crawling local addresses is required for the demo site. In production this is False (SSRF guard).
     allow_private_hosts: bool = field(default_factory=lambda: _bool("ALLOW_PRIVATE_HOSTS", True))
     max_pages: int = field(default_factory=lambda: int(_env("CRAWL_MAX_PAGES", "50")))
-    crawl_user_agent: str = "SEOSysBot/1.0 (+https://seosys.local/bot)"
+    crawl_user_agent: str = "IndexoraBot/1.0 (+https://indexora.local/bot)"
     # Optional real LLM. Without a key the platform uses a deterministic offline writer.
     anthropic_api_key: str = field(default_factory=lambda: _env("ANTHROPIC_API_KEY"))
     llm_model: str = field(default_factory=lambda: _env("SEO_LLM_MODEL", "claude-haiku-5-5"))

@@ -1,4 +1,4 @@
-/* SEOSys: public website, client portal and agency console.
+/* Indexora: public website, client portal and agency console.
    An inspection-desk console for a team that audits and fixes websites for local trades.
    Ink sidebar, cool mist workspace, inspection-tag yellow only where something needs a person. */
 :root {
@@ -395,6 +395,7 @@ input:focus-visible, select:focus-visible { border-color: var(--ink); }
 .site-main { flex: 1; }
 .site-foot { background: var(--mist); border-top: 1px solid var(--rule); padding: 28px var(--gutter); font-size: 14px; color: var(--slate); }
 .site-foot-inner { max-width: 1180px; margin: 0 auto; display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.site-foot-legal { margin-top: 6px; font-size: 13px; }
 
 .hero { background: var(--ink); color: #fff; padding: clamp(40px, 7vw, 96px) var(--gutter) clamp(48px, 8vw, 112px);
   display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr); gap: clamp(32px, 5vw, 72px); align-items: center; }
